@@ -1,6 +1,7 @@
 mod config;
 mod discovery;
-mod manager;
+pub mod install;
+pub mod manager;
 mod operations;
 pub mod templates;
 

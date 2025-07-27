@@ -3,6 +3,7 @@ use console;
 use inquire::{Confirm, MultiSelect, Select, Text};
 use std::path::PathBuf;
 
+use crate::git::{GitConfig, SearchCommand};
 use crate::workspace::WorkspaceManager;
 
 pub async fn run_interactive_mode(workspace_manager: &mut WorkspaceManager) -> Result<()> {
@@ -42,6 +43,12 @@ pub async fn run_interactive_mode(workspace_manager: &mut WorkspaceManager) -> R
         println!();
     }
 
+    Ok(())
+}
+
+async fn search_and_clone_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    let git_config = GitConfig::default();
+    SearchCommand::execute_interactive(workspace_manager, &git_config).await?;
     Ok(())
 }
 
@@ -607,6 +614,7 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
     loop {
         let actions = vec![
             "Show repository status",
+            "Search & clone from GitHub",
             "Discover new repositories",
             "Sync repositories",
             "Execute command on repositories",
@@ -619,6 +627,9 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
         match action {
             "Show repository status" => {
                 show_status_interactive(workspace_manager).await?;
+            }
+            "Search & clone from GitHub" => {
+                search_and_clone_interactive(workspace_manager).await?;
             }
             "Discover new repositories" => {
                 discover_repositories_interactive(workspace_manager).await?;

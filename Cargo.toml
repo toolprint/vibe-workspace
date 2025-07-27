@@ -54,6 +54,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # URL encoding
 urlencoding = "2.1"
 
+# URL parsing
+url = "2.5"
+
+# Interactive selection
+dialoguer = "0.11"
+
+# macOS-specific dependencies for URI handling
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+cocoa = "0.24"
+core-foundation = "0.9"
+
 [profile.release]
 opt-level = "z"     # Optimize for size
 lto = true          # Link-time optimization

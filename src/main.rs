@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use tracing::Level;
 
 mod apps;
+mod git;
 mod ui;
+mod uri;
 mod utils;
 mod workspace;
 
@@ -294,6 +296,27 @@ enum GitCommands {
         #[arg(short, long)]
         group: Option<String>,
     },
+
+    /// Clone a repository to the workspace
+    Clone {
+        /// Repository URL or identifier
+        url: String,
+
+        /// Override default clone location
+        #[arg(short, long)]
+        path: Option<PathBuf>,
+
+        /// Open in configured editor after cloning
+        #[arg(short, long)]
+        open: bool,
+
+        /// Run post-install commands (npm install, etc.)
+        #[arg(short, long)]
+        install: bool,
+    },
+
+    /// Search for repositories interactively
+    Search,
 }
 
 #[tokio::main]
@@ -628,6 +651,30 @@ async fn main() -> Result<()> {
                 } => {
                     workspace_manager
                         .sync_repositories(fetch_only, prune, group.as_deref())
+                        .await?;
+                }
+
+                GitCommands::Clone {
+                    url,
+                    path,
+                    open,
+                    install,
+                } => {
+                    let git_config = git::GitConfig::default();
+                    git::CloneCommand::execute(
+                        url,
+                        path,
+                        open,
+                        install,
+                        &mut workspace_manager,
+                        &git_config,
+                    )
+                    .await?;
+                }
+
+                GitCommands::Search => {
+                    let git_config = git::GitConfig::default();
+                    git::SearchCommand::execute_interactive(&mut workspace_manager, &git_config)
                         .await?;
                 }
             },

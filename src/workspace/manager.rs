@@ -438,6 +438,15 @@ impl WorkspaceManager {
         &self.config.workspace.root
     }
 
+    pub fn config(&self) -> &WorkspaceConfig {
+        &self.config
+    }
+
+    pub async fn add_repository(&mut self, repo: Repository) -> Result<()> {
+        self.config.add_repository(repo);
+        self.save_config().await
+    }
+
     pub fn get_config(&self) -> &WorkspaceConfig {
         &self.config
     }
