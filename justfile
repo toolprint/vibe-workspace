@@ -1,5 +1,21 @@
 #!/usr/bin/env -S just --justfile
 
+# =====================================
+# 🚀 QUICK REFERENCE - Manual Release Workflow
+# =====================================
+# 1. just zigbuild-release           # Build cross-platform binaries (includes checksums)
+# 2. just release-all                # Complete release (validation → GitHub → cargo publish)
+#
+# Individual steps:
+# - just validate-artifacts          # Validate built binaries
+# - just create-github-release       # Create GitHub release + upload artifacts & checksums
+# - just validate-github-release     # Verify upload success
+# - just test-binstall               # Test cargo-binstall installation from GitHub
+# - just cargo-publish               # Publish to crates.io
+#
+# cargo-binstall support: Users can install with `cargo binstall vibe-workspace`
+# =====================================
+
 _default:
     @just -l -u
 
@@ -104,7 +120,7 @@ release-info:
 
 # Install release binaries locally and show installation info
 [group('rust')]
-install: build-release
+install-local-release: build-release
     #!/usr/bin/env bash
     echo "📦 Installing Release Binaries"
     echo "=============================="
@@ -182,6 +198,152 @@ install: build-release
         echo "❌ Installation failed!"
         exit 1
     fi
+
+# Install from zigbuild release artifacts
+[group('rust')]
+install-zig-release:
+    #!/usr/bin/env bash
+    echo "📦 Installing from Zigbuild Release Artifacts"
+    echo "============================================="
+    echo ""
+    
+    # Check if release-artifacts directory exists
+    if [ ! -d "./release-artifacts" ]; then
+        echo "❌ Release artifacts directory not found"
+        echo "   Run 'just zigbuild-release' or 'just dagger-release' first"
+        exit 1
+    fi
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    version="v$version"  # Add v prefix for release naming
+    echo "🔍 Looking for version: $version"
+    
+    # Detect platform
+    arch=$(uname -m)
+    os=$(uname -s | tr '[:upper:]' '[:lower:]')
+    
+    echo "🔍 Detected platform: $arch-$os"
+    echo ""
+    
+    # Determine target platform and artifact name
+    case "$os" in
+        "darwin")
+            # Check for universal2 first (preferred for macOS)
+            if [ -f "./release-artifacts/vibe-workspace-$version-universal2-apple-darwin.tar.gz" ]; then
+                target="universal2-apple-darwin"
+                artifact="vibe-workspace-$version-universal2-apple-darwin.tar.gz"
+                echo "🎯 Using universal2 binary for macOS"
+            elif [ "$arch" = "arm64" ] && [ -f "./release-artifacts/vibe-workspace-$version-aarch64-apple-darwin.tar.gz" ]; then
+                target="aarch64-apple-darwin"
+                artifact="vibe-workspace-$version-aarch64-apple-darwin.tar.gz"
+                echo "🎯 Using ARM64 binary for macOS"
+            elif [ "$arch" = "x86_64" ] && [ -f "./release-artifacts/vibe-workspace-$version-x86_64-apple-darwin.tar.gz" ]; then
+                target="x86_64-apple-darwin"
+                artifact="vibe-workspace-$version-x86_64-apple-darwin.tar.gz"
+                echo "🎯 Using x86_64 binary for macOS"
+            else
+                echo "❌ No compatible macOS artifact found for version $version"
+                echo "   Available artifacts:"
+                ls -1 ./release-artifacts/ | grep -E '\.tar\.gz$' | sed 's/^/   /'
+                exit 1
+            fi
+            ;;
+        "linux")
+            if [ "$arch" = "x86_64" ] && [ -f "./release-artifacts/vibe-workspace-$version-x86_64-unknown-linux-gnu.tar.gz" ]; then
+                target="x86_64-unknown-linux-gnu"
+                artifact="vibe-workspace-$version-x86_64-unknown-linux-gnu.tar.gz"
+                echo "🎯 Using x86_64 binary for Linux"
+            else
+                echo "❌ No compatible Linux artifact found for version $version"
+                echo "   Available artifacts:"
+                ls -1 ./release-artifacts/ | grep -E '\.tar\.gz$' | sed 's/^/   /'
+                exit 1
+            fi
+            ;;
+        *)
+            echo "❌ Unsupported platform: $os"
+            echo "   Available artifacts:"
+            ls -1 ./release-artifacts/ | grep -E '\.tar\.gz$' | sed 's/^/   /'
+            exit 1
+            ;;
+    esac
+    
+    echo "📁 Selected artifact: $artifact"
+    echo ""
+    
+    # Determine installation directory
+    if [ -n "$CARGO_HOME" ]; then
+        cargo_bin_dir="$CARGO_HOME/bin"
+    else
+        cargo_bin_dir="$HOME/.cargo/bin"
+    fi
+    
+    # Create cargo bin directory if it doesn't exist
+    mkdir -p "$cargo_bin_dir"
+    
+    # Create temporary directory for extraction
+    temp_dir=$(mktemp -d)
+    trap "rm -rf $temp_dir" EXIT
+    
+    echo "🔧 Extracting $artifact..."
+    if tar -xzf "./release-artifacts/$artifact" -C "$temp_dir"; then
+        echo "✅ Extraction successful"
+    else
+        echo "❌ Failed to extract artifact"
+        exit 1
+    fi
+    
+    # Find the binary in extracted files
+    binary_name="vibe"
+    if [ -f "$temp_dir/$binary_name" ]; then
+        echo "🚀 Installing $binary_name to $cargo_bin_dir/"
+        
+        # Copy binary and make executable
+        cp "$temp_dir/$binary_name" "$cargo_bin_dir/$binary_name"
+        chmod +x "$cargo_bin_dir/$binary_name"
+        
+        echo "✅ Installation completed successfully!"
+        echo ""
+        
+        # Show installation information
+        echo "📂 Installation Directory: $cargo_bin_dir"
+        echo ""
+        echo "🔧 Binary: $binary_name"
+        echo "   📍 Path: $cargo_bin_dir/$binary_name"
+        echo "   📏 Size: $(du -h $cargo_bin_dir/$binary_name | cut -f1)"
+        echo "   🏗️  Platform: $target"
+        echo "   📅 Installed: $(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S' $cargo_bin_dir/$binary_name 2>/dev/null || stat -c '%y' $cargo_bin_dir/$binary_name 2>/dev/null | cut -d'.' -f1)"
+        if command -v file >/dev/null 2>&1; then
+            echo "   🔍 Type: $(file $cargo_bin_dir/$binary_name | cut -d':' -f2 | sed 's/^ *//')"
+        fi
+        echo ""
+        
+        echo "💡 Usage:"
+        echo "   Run directly: $binary_name --help"
+        echo "   Or ensure ~/.cargo/bin is in your PATH"
+        echo ""
+        
+    else
+        echo "❌ Binary $binary_name not found in extracted archive"
+        echo "   Contents of archive:"
+        ls -la "$temp_dir/"
+        exit 1
+    fi
+
+# Install from zigbuild release artifacts (default install command)
+[group('rust')]
+install: install-zig-release
 
 # Run cli with arguments (example: just run --help)
 [group('rust')]
@@ -306,8 +468,10 @@ pre-commit:
     echo "✅ Code is ready for commit"
 
 # =====================================
-# Dagger CI/CD Commands
+# Dagger CI/CD Commands (LEGACY - Not used in current workflow)
 # =====================================
+# NOTE: Dagger commands are slow locally and not part of the current
+# manual release process. Use zigbuild-release and release-all instead.
 
 # Run Dagger CI pipeline locally
 [group('dagger')]
@@ -356,23 +520,59 @@ dagger-build-release platform="linux/amd64":
 
 # Build releases for all platforms using Dagger with zigbuild (parallel execution)
 [group('dagger')]
-dagger-release version="v0.1.0":
-    @echo "🚀 Building all platform releases in parallel with Dagger + zigbuild..."
-    @mkdir -p ./release-artifacts
-    dagger call release-zigbuild --source . --version {{ version }} export --path ./release-artifacts/
-    @echo "✅ All platform releases built successfully!"
-    @echo "📦 Release artifacts:"
-    @ls -la ./release-artifacts/
+dagger-release:
+    #!/usr/bin/env bash
+    echo "🚀 Building all platform releases in parallel with Dagger + zigbuild..."
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    version="v$version"  # Add v prefix for release naming
+    echo "📦 Building version: $version"
+    echo ""
+    
+    mkdir -p ./release-artifacts
+    dagger call release-zigbuild --source . --version $version export --path ./release-artifacts/
+    echo "✅ All platform releases built successfully!"
+    echo "📦 Release artifacts:"
+    ls -la ./release-artifacts/
 
 # Run complete release pipeline using Dagger
 [group('dagger')]
-dagger-release-all version="v0.1.0":
-    @echo "🚀 Running complete release pipeline with Dagger..."
-    @mkdir -p ./release-artifacts
-    dagger call release --source . --version {{ version }} export --path ./release-artifacts/
-    @echo "✅ Complete release pipeline finished!"
-    @echo "📦 Release artifacts:"
-    @ls -la ./release-artifacts/
+dagger-release-all:
+    #!/usr/bin/env bash
+    echo "🚀 Running complete release pipeline with Dagger..."
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    version="v$version"  # Add v prefix for release naming
+    echo "📦 Building version: $version"
+    echo ""
+    
+    mkdir -p ./release-artifacts
+    dagger call release --source . --version $version export --path ./release-artifacts/
+    echo "✅ Complete release pipeline finished!"
+    echo "📦 Release artifacts:"
+    ls -la ./release-artifacts/
 
 
 # =====================================
@@ -381,9 +581,26 @@ dagger-release-all version="v0.1.0":
 
 # Build all platforms using cargo-zigbuild Docker image
 [group('zigbuild')]
-zigbuild-release version="v0.1.0":
+zigbuild-release:
     #!/usr/bin/env bash
     echo "🚀 Building releases for all platforms using cargo-zigbuild..."
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    version="v$version"  # Add v prefix for release naming
+    echo "📦 Building version: $version"
+    echo ""
+    
     mkdir -p ./release-artifacts
     
     
@@ -406,28 +623,43 @@ zigbuild-release version="v0.1.0":
     echo "📦 Packaging release artifacts..."
     
     # Linux x86_64
-    tar czf ./release-artifacts/vibe-workspace-{{ version }}-x86_64-unknown-linux-gnu.tar.gz \
+    tar czf ./release-artifacts/vibe-workspace-$version-x86_64-unknown-linux-gnu.tar.gz \
         -C target/x86_64-unknown-linux-gnu/release vibe \
         -C "$(pwd)" README.md
     
     # macOS x86_64
-    tar czf ./release-artifacts/vibe-workspace-{{ version }}-x86_64-apple-darwin.tar.gz \
+    tar czf ./release-artifacts/vibe-workspace-$version-x86_64-apple-darwin.tar.gz \
         -C target/x86_64-apple-darwin/release vibe \
         -C "$(pwd)" README.md
     
     # macOS ARM64
-    tar czf ./release-artifacts/vibe-workspace-{{ version }}-aarch64-apple-darwin.tar.gz \
+    tar czf ./release-artifacts/vibe-workspace-$version-aarch64-apple-darwin.tar.gz \
         -C target/aarch64-apple-darwin/release vibe \
         -C "$(pwd)" README.md
     
     # macOS Universal
-    tar czf ./release-artifacts/vibe-workspace-{{ version }}-universal2-apple-darwin.tar.gz \
+    tar czf ./release-artifacts/vibe-workspace-$version-universal2-apple-darwin.tar.gz \
         -C target/universal2-apple-darwin/release vibe \
         -C "$(pwd)" README.md
     
     echo "✅ All platform releases built successfully!"
+    echo ""
+    
+    # Generate checksums for security verification
+    echo "🔐 Generating SHA256 checksums..."
+    cd ./release-artifacts
+    for file in *.tar.gz; do
+        if [ -f "$file" ]; then
+            shasum -a 256 "$file" >> SHA256SUMS
+            echo "   ✅ $file"
+        fi
+    done
+    cd ..
+    
     echo "📦 Release artifacts:"
     ls -la ./release-artifacts/
+    echo ""
+    echo "🔐 Checksums saved to: ./release-artifacts/SHA256SUMS"
 
 # Test zigbuild setup for a single platform
 [group('zigbuild')]
@@ -454,4 +686,806 @@ zigbuild-test target="x86_64-apple-darwin":
     fi
     
     echo "✅ Build successful! Binary at: target/{{ target }}/release/$binary_name"
+
+# Clean up release artifacts
+[group('zigbuild')]
+clean-release-artifacts:
+    #!/usr/bin/env bash
+    echo "🧹 Cleaning release artifacts..."
+    if [ -d "./release-artifacts" ]; then
+        rm -rf ./release-artifacts/*
+        echo "✅ Release artifacts cleaned"
+        echo "📁 Directory: $(pwd)/release-artifacts/ (empty)"
+    else
+        echo "ℹ️  No release artifacts to clean"
+    fi
+
+# =====================================
+# Cargo Publishing Commands
+# =====================================
+
+# Check if package is ready for publishing
+[group('publish')]
+cargo-check-publish:
+    #!/usr/bin/env bash
+    echo "🔍 Checking package readiness for publishing..."
+    echo "=============================================="
+    echo ""
+    
+    # Check if we're in a git repository and if it's clean
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        if [ -n "$(git status --porcelain)" ]; then
+            echo "⚠️  Warning: Git working directory is not clean"
+            echo "   Consider committing changes before publishing"
+            git status --porcelain | sed 's/^/   /'
+            echo ""
+        else
+            echo "✅ Git working directory is clean"
+        fi
+        
+        # Check if current commit is tagged
+        current_tag=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "")
+        if [ -n "$current_tag" ]; then
+            echo "✅ Current commit is tagged: $current_tag"
+        else
+            echo "⚠️  Warning: Current commit is not tagged"
+            echo "   Consider creating a version tag before publishing"
+        fi
+        echo ""
+    else
+        echo "⚠️  Warning: Not in a git repository"
+        echo ""
+    fi
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -n "$version" ]; then
+        echo "📦 Package version: $version"
+        
+        # Check if this version already exists on crates.io
+        echo "🔍 Checking if version $version exists on crates.io..."
+        if curl -s "https://crates.io/api/v1/crates/vibe-workspace" | grep -q "\"num\":\"$version\""; then
+            echo "❌ Version $version already exists on crates.io"
+            echo "   You need to bump the version before publishing"
+            exit 1
+        else
+            echo "✅ Version $version is available on crates.io"
+        fi
+    else
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    echo ""
+    
+    # Check for required metadata
+    echo "🔍 Checking package metadata..."
+    
+    # Check description
+    if grep -q '^description = ' Cargo.toml; then
+        echo "✅ Description: present"
+    else
+        echo "❌ Description: missing (required for crates.io)"
+    fi
+    
+    # Check license
+    if grep -q '^license = ' Cargo.toml; then
+        echo "✅ License: present"
+    else
+        echo "❌ License: missing (required for crates.io)"
+    fi
+    
+    # Check repository
+    if grep -q '^repository = ' Cargo.toml; then
+        echo "✅ Repository: present"
+    else
+        echo "⚠️  Repository: missing (recommended)"
+    fi
+    
+    # Check keywords
+    if grep -q '^keywords = ' Cargo.toml; then
+        echo "✅ Keywords: present"
+    else
+        echo "⚠️  Keywords: missing (recommended)"
+    fi
+    
+    # Check categories
+    if grep -q '^categories = ' Cargo.toml; then
+        echo "✅ Categories: present"
+    else
+        echo "⚠️  Categories: missing (recommended)"
+    fi
+    
+    echo ""
+    echo "📋 Package check completed!"
+
+# Create a package for inspection without uploading
+[group('publish')]
+cargo-package:
+    @echo "📦 Creating package for inspection..."
+    cargo package
+    @echo "✅ Package created successfully!"
+    @echo "📁 Package file: target/package/vibe-workspace-$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/').crate"
+    @echo ""
+    @echo "💡 To inspect the package contents:"
+    @echo "   tar -tzf target/package/vibe-workspace-*.crate"
+
+# Dry run of cargo publish (validates without uploading)
+[group('publish')]
+cargo-publish-dry: cargo-check-publish
+    @echo "🔍 Performing dry run of cargo publish..."
+    cargo publish --dry-run
+    @echo "✅ Dry run completed successfully!"
+    @echo "📋 Package is ready for publishing"
+
+# Publish to crates.io (requires authentication)
+[group('publish')]
+cargo-publish: cargo-check-publish
+    #!/usr/bin/env bash
+    echo "🚀 Publishing to crates.io..."
+    echo "=============================="
+    echo ""
+    
+    # Final confirmation
+    echo "⚠️  This will publish the package to crates.io!"
+    echo "   Once published, versions cannot be yanked or deleted"
+    echo ""
+    read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "🚀 Publishing..."
+        if cargo publish; then
+            version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            echo ""
+            echo "🎉 Successfully published vibe-workspace v$version to crates.io!"
+            echo "📦 Package URL: https://crates.io/crates/vibe-workspace"
+            echo ""
+            echo "💡 Users can now install with:"
+            echo "   cargo install vibe-workspace"
+        else
+            echo ""
+            echo "❌ Publishing failed!"
+            exit 1
+        fi
+    else
+        echo ""
+        echo "❌ Publishing cancelled"
+        exit 1
+    fi
+
+# Show publishing status and information
+[group('publish')]
+cargo-publish-info:
+    #!/usr/bin/env bash
+    echo "📊 Publishing Information"
+    echo "========================"
+    echo ""
+    
+    # Package info
+    if command -v tq >/dev/null 2>&1; then
+        name=$(tq -r '.package.name' Cargo.toml 2>/dev/null)
+        version=$(tq -r '.package.version' Cargo.toml 2>/dev/null)
+    else
+        name=$(grep '^name = ' Cargo.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    echo "📦 Package: $name v$version"
+    echo ""
+    
+    # Check crates.io status
+    echo "🔍 Checking crates.io status..."
+    if curl -s "https://crates.io/api/v1/crates/$name" > /dev/null 2>&1; then
+        echo "✅ Package exists on crates.io"
+        
+        # Get published versions
+        versions=$(curl -s "https://crates.io/api/v1/crates/$name" | grep -o '"num":"[^"]*"' | cut -d'"' -f4 | head -5)
+        echo "📋 Recent versions:"
+        echo "$versions" | sed 's/^/   /'
+        
+        if echo "$versions" | grep -q "^$version$"; then
+            echo "✅ Current version ($version) is published"
+        else
+            echo "⚠️  Current version ($version) is not yet published"
+        fi
+    else
+        echo "⚠️  Package not found on crates.io (not yet published)"
+    fi
+    echo ""
+    
+    echo "🔗 Links:"
+    echo "   📦 Crates.io: https://crates.io/crates/$name"
+    echo "   📚 Docs.rs: https://docs.rs/$name"
+    if grep -q '^repository = ' Cargo.toml; then
+        repo=$(grep '^repository = ' Cargo.toml | sed 's/repository = "\(.*\)"/\1/')
+        echo "   🔗 Repository: $repo"
+    fi
+
+# =====================================
+# Manual Release Workflow Commands
+# =====================================
+
+# Validate release artifacts are properly built and functional
+[group('release')]
+validate-artifacts:
+    #!/usr/bin/env bash
+    echo "🔍 Validating release artifacts..."
+    echo "=================================="
+    echo ""
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    version="v$version"
+    echo "🔍 Validating artifacts for version: $version"
+    echo ""
+    
+    # Check if release-artifacts directory exists
+    if [ ! -d "./release-artifacts" ]; then
+        echo "❌ Release artifacts directory not found"
+        echo "   Run 'just zigbuild-release' first"
+        exit 1
+    fi
+    
+    # Expected artifacts
+    expected_artifacts=(
+        "vibe-workspace-$version-x86_64-unknown-linux-gnu.tar.gz"
+        "vibe-workspace-$version-x86_64-apple-darwin.tar.gz"
+        "vibe-workspace-$version-aarch64-apple-darwin.tar.gz"
+        "vibe-workspace-$version-universal2-apple-darwin.tar.gz"
+    )
+    
+    validation_success=true
+    
+    for artifact in "${expected_artifacts[@]}"; do
+        artifact_path="./release-artifacts/$artifact"
+        
+        if [ ! -f "$artifact_path" ]; then
+            echo "❌ Missing artifact: $artifact"
+            validation_success=false
+            continue
+        fi
+        
+        echo "🔧 Validating: $artifact"
+        
+        # Check if archive can be extracted
+        temp_dir=$(mktemp -d)
+        if tar -tzf "$artifact_path" > /dev/null 2>&1; then
+            echo "   ✅ Archive format is valid"
+            
+            # Extract and check for vibe binary
+            tar -xzf "$artifact_path" -C "$temp_dir" 2>/dev/null
+            
+            if [ -f "$temp_dir/vibe" ]; then
+                echo "   ✅ Contains vibe binary"
+                
+                # Check if binary is executable (on compatible platforms)
+                if [[ "$artifact" == *"apple-darwin"* ]] && [[ "$(uname)" == "Darwin" ]]; then
+                    if file "$temp_dir/vibe" | grep -q "executable"; then
+                        echo "   ✅ Binary is executable"
+                    else
+                        echo "   ⚠️  Binary may not be executable"
+                    fi
+                elif [[ "$artifact" == *"linux-gnu"* ]] && [[ "$(uname)" == "Linux" ]]; then
+                    if file "$temp_dir/vibe" | grep -q "executable"; then
+                        echo "   ✅ Binary is executable"
+                    else
+                        echo "   ⚠️  Binary may not be executable"
+                    fi
+                else
+                    echo "   ℹ️  Cross-platform binary (cannot test execution on this platform)"
+                fi
+                
+                # Show binary size
+                size=$(du -h "$temp_dir/vibe" | cut -f1)
+                echo "   📏 Binary size: $size"
+            else
+                echo "   ❌ Missing vibe binary in archive"
+                validation_success=false
+            fi
+            
+            # Check for README.md
+            if [ -f "$temp_dir/README.md" ]; then
+                echo "   ✅ Contains README.md"
+            else
+                echo "   ⚠️  Missing README.md"
+            fi
+        else
+            echo "   ❌ Invalid archive format"
+            validation_success=false
+        fi
+        
+        # Cleanup temp directory
+        rm -rf "$temp_dir"
+        
+        # Show artifact size
+        artifact_size=$(du -h "$artifact_path" | cut -f1)
+        echo "   📦 Archive size: $artifact_size"
+        echo ""
+    done
+    
+    if [ "$validation_success" = true ]; then
+        echo "✅ All artifacts validated successfully!"
+        echo ""
+        echo "📋 Summary:"
+        echo "   📦 Total artifacts: ${#expected_artifacts[@]}"
+        echo "   📁 Total size: $(du -sch ./release-artifacts/*.tar.gz | tail -1 | cut -f1)"
+        echo ""
+        echo "🚀 Ready for GitHub release!"
+    else
+        echo "❌ Artifact validation failed!"
+        echo "   Please rebuild artifacts with 'just zigbuild-release'"
+        exit 1
+    fi
+
+# Create GitHub release and upload artifacts
+[group('release')]
+create-github-release:
+    #!/usr/bin/env bash
+    echo "🚀 Creating GitHub release..."
+    echo "============================="
+    echo ""
+    
+    # Check if gh CLI is available
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "❌ GitHub CLI (gh) is not installed"
+        echo "   Install with: brew install gh"
+        echo "   Or download from: https://cli.github.com/"
+        exit 1
+    fi
+    
+    # Check if user is authenticated
+    if ! gh auth status >/dev/null 2>&1; then
+        echo "❌ Not authenticated with GitHub CLI"
+        echo "   Run: gh auth login"
+        exit 1
+    fi
+    
+    # Extract version and other info from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+        name=$(tq -f Cargo.toml -r '.package.name' 2>/dev/null)
+        description=$(tq -f Cargo.toml -r '.package.description' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        name=$(grep '^name = ' Cargo.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+        description=$(grep '^description = ' Cargo.toml | head -1 | sed 's/description = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    tag="v$version"
+    echo "📦 Creating release for: $name v$version"
+    echo "🏷️  Git tag: $tag"
+    echo ""
+    
+    # Check if release already exists
+    if gh release view "$tag" >/dev/null 2>&1; then
+        echo "⚠️  Release $tag already exists!"
+        read -p "Do you want to delete it and recreate? (y/N): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "🗑️  Deleting existing release..."
+            gh release delete "$tag" --yes
+        else
+            echo "❌ Release creation cancelled"
+            exit 1
+        fi
+    fi
+    
+    # Check if tag already exists
+    if git tag -l | grep -q "^$tag$"; then
+        echo "⚠️  Git tag $tag already exists!"
+        read -p "Do you want to delete it and recreate? (y/N): " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "🗑️  Deleting existing tag..."
+            git tag -d "$tag"
+            git push origin --delete "$tag" 2>/dev/null || true
+        else
+            echo "❌ Release creation cancelled"
+            exit 1
+        fi
+    fi
+    
+    # Create and push git tag
+    echo "🏷️  Creating git tag..."
+    git tag -a "$tag" -m "Release $tag"
+    git push origin "$tag"
+    
+    # Generate release notes from template
+    if [ ! -f "release-notes-template.md" ]; then
+        echo "❌ Release notes template not found: release-notes-template.md"
+        echo "   This file should exist in the project root"
+        exit 1
+    fi
+    
+    echo "📝 Generating release notes from template..."
+    release_notes=$(sed -e "s/__NAME__/$name/g" \
+                        -e "s/__TAG__/$tag/g" \
+                        -e "s/__DESCRIPTION__/$description/g" \
+                        release-notes-template.md)
+    
+    # Create GitHub release
+    echo "📝 Creating GitHub release..."
+    echo "$release_notes" | gh release create "$tag" \
+        --title "$name $tag" \
+        --notes-file - \
+        --draft
+    
+    echo "✅ Draft release created successfully!"
+    echo ""
+    
+    # Upload artifacts
+    echo "📤 Uploading release artifacts..."
+    artifacts=(
+        "./release-artifacts/vibe-workspace-$tag-x86_64-unknown-linux-gnu.tar.gz"
+        "./release-artifacts/vibe-workspace-$tag-x86_64-apple-darwin.tar.gz"
+        "./release-artifacts/vibe-workspace-$tag-aarch64-apple-darwin.tar.gz"
+        "./release-artifacts/vibe-workspace-$tag-universal2-apple-darwin.tar.gz"
+        "./release-artifacts/SHA256SUMS"
+    )
+    
+    upload_success=true
+    for artifact in "${artifacts[@]}"; do
+        if [ -f "$artifact" ]; then
+            echo "📤 Uploading $(basename "$artifact")..."
+            if gh release upload "$tag" "$artifact"; then
+                echo "   ✅ Uploaded successfully"
+            else
+                echo "   ❌ Upload failed"
+                upload_success=false
+            fi
+        else
+            echo "❌ Artifact not found: $artifact"
+            upload_success=false
+        fi
+    done
+    
+    if [ "$upload_success" = true ]; then
+        echo ""
+        echo "✅ All artifacts uploaded successfully!"
+        echo ""
+        echo "🔗 Release URL: $(gh release view "$tag" --json url --jq .url)"
+        echo ""
+        echo "⚠️  Release is currently in DRAFT status"
+        echo "   Review the release and publish it manually on GitHub"
+        echo "   Or run: gh release edit '$tag' --draft=false"
+    else
+        echo ""
+        echo "❌ Some artifacts failed to upload!"
+        echo "   Please check the errors above and try again"
+        exit 1
+    fi
+
+# Validate that GitHub release artifacts were uploaded successfully
+[group('release')]
+validate-github-release:
+    #!/usr/bin/env bash
+    echo "🔍 Validating GitHub release artifacts..."
+    echo "========================================"
+    echo ""
+    
+    # Check if gh CLI is available
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "❌ GitHub CLI (gh) is not installed"
+        exit 1
+    fi
+    
+    # Extract version from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ]; then
+        echo "❌ Could not extract version from Cargo.toml"
+        exit 1
+    fi
+    
+    tag="v$version"
+    echo "🔍 Validating release: $tag"
+    echo ""
+    
+    # Check if release exists
+    if ! gh release view "$tag" >/dev/null 2>&1; then
+        echo "❌ Release $tag not found on GitHub"
+        echo "   Run 'just create-github-release' first"
+        exit 1
+    fi
+    
+    # Get release info
+    release_url=$(gh release view "$tag" --json url --jq .url)
+    is_draft=$(gh release view "$tag" --json isDraft --jq .isDraft)
+    
+    echo "🔗 Release URL: $release_url"
+    echo "📋 Draft status: $is_draft"
+    echo ""
+    
+    # Check expected artifacts
+    expected_artifacts=(
+        "vibe-workspace-$tag-x86_64-unknown-linux-gnu.tar.gz"
+        "vibe-workspace-$tag-x86_64-apple-darwin.tar.gz"
+        "vibe-workspace-$tag-aarch64-apple-darwin.tar.gz"
+        "vibe-workspace-$tag-universal2-apple-darwin.tar.gz"
+    )
+    
+    echo "🔍 Checking uploaded artifacts..."
+    uploaded_assets=$(gh release view "$tag" --json assets --jq '.assets[].name')
+    
+    validation_success=true
+    for artifact in "${expected_artifacts[@]}"; do
+        if echo "$uploaded_assets" | grep -q "^$artifact$"; then
+            echo "   ✅ $artifact"
+            
+            # Get download URL and size
+            download_url=$(gh release view "$tag" --json assets --jq ".assets[] | select(.name==\"$artifact\") | .browserDownloadUrl")
+            size=$(gh release view "$tag" --json assets --jq ".assets[] | select(.name==\"$artifact\") | .size")
+            size_mb=$(echo "scale=2; $size / 1024 / 1024" | bc -l)
+            echo "      📏 Size: ${size_mb}MB"
+            echo "      🔗 URL: $download_url"
+        else
+            echo "   ❌ Missing: $artifact"
+            validation_success=false
+        fi
+    done
+    
+    echo ""
+    
+    if [ "$validation_success" = true ]; then
+        echo "✅ All artifacts successfully uploaded to GitHub!"
+        echo ""
+        if [ "$is_draft" = "true" ]; then
+            echo "⚠️  Release is currently in DRAFT status"
+            echo "   Publish it with: gh release edit '$tag' --draft=false"
+            echo "   Or publish manually on GitHub"
+        else
+            echo "🎉 Release is PUBLISHED and ready!"
+        fi
+        echo ""
+        echo "🚀 Ready for cargo publish!"
+    else
+        echo "❌ GitHub release validation failed!"
+        echo "   Some artifacts are missing from the release"
+        exit 1
+    fi
+
+# Test cargo-binstall installation from GitHub release
+[group('release')]
+test-binstall:
+    #!/usr/bin/env bash
+    echo "🧪 Testing cargo-binstall installation..."
+    echo "========================================"
+    echo ""
+    
+    # Check if cargo-binstall is available
+    if ! command -v cargo-binstall >/dev/null 2>&1; then
+        echo "❌ cargo-binstall is not installed"
+        echo "   Install with: cargo install cargo-binstall"
+        exit 1
+    fi
+    
+    # Extract version and name from Cargo.toml
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+        name=$(tq -f Cargo.toml -r '.package.name' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        name=$(grep '^name = ' Cargo.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+    fi
+    
+    if [ -z "$version" ] || [ -z "$name" ]; then
+        echo "❌ Could not extract version or name from Cargo.toml"
+        exit 1
+    fi
+    
+    tag="v$version"
+    echo "🔍 Testing installation of: $name $tag"
+    echo ""
+    
+    # Check if GitHub release exists
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "⚠️  GitHub CLI not available - cannot verify release exists"
+    elif ! gh release view "$tag" >/dev/null 2>&1; then
+        echo "❌ Release $tag not found on GitHub"
+        echo "   Run 'just create-github-release' first"
+        exit 1
+    else
+        echo "✅ GitHub release $tag found"
+    fi
+    
+    # Create temporary directory for test installation
+    temp_dir=$(mktemp -d)
+    trap "rm -rf $temp_dir" EXIT
+    
+    echo "📦 Testing cargo-binstall installation..."
+    echo "   Target directory: $temp_dir"
+    echo ""
+    
+    # Test cargo-binstall with dry-run first
+    echo "🧪 Dry-run test..."
+    if CARGO_INSTALL_ROOT="$temp_dir" cargo binstall "$name" --version "$version" --dry-run; then
+        echo "✅ Dry-run successful - metadata and URLs are valid"
+    else
+        echo "❌ Dry-run failed - check cargo-binstall metadata configuration"
+        exit 1
+    fi
+    echo ""
+    
+    # Actual installation test
+    echo "📥 Actual installation test..."
+    if CARGO_INSTALL_ROOT="$temp_dir" cargo binstall "$name" --version "$version" --no-confirm; then
+        echo "✅ Installation successful"
+        
+        # Test if binary was installed and works
+        installed_binary="$temp_dir/bin/vibe"
+        if [ -f "$installed_binary" ]; then
+            echo "✅ Binary installed at: $installed_binary"
+            
+            # Test binary execution
+            if "$installed_binary" --version >/dev/null 2>&1; then
+                actual_version=$("$installed_binary" --version | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+                echo "✅ Binary executes successfully"
+                echo "   Reported version: $actual_version"
+                
+                if [ "$actual_version" = "$version" ]; then
+                    echo "✅ Version matches expected: $version"
+                else
+                    echo "⚠️  Version mismatch - Expected: $version, Got: $actual_version"
+                fi
+            else
+                echo "❌ Binary fails to execute"
+                exit 1
+            fi
+        else
+            echo "❌ Binary not found at expected location"
+            exit 1
+        fi
+    else
+        echo "❌ Installation failed"
+        exit 1
+    fi
+    
+    echo ""
+    echo "🎉 cargo-binstall test completed successfully!"
+    echo ""
+    echo "✅ Test Results:"
+    echo "   📦 Package metadata: valid"
+    echo "   🔗 Download URLs: accessible"
+    echo "   📥 Installation: successful"
+    echo "   🔧 Binary execution: working"
+    echo "   📋 Version: correct"
+    echo ""
+    echo "👥 Users can install with: cargo binstall $name"
+
+# Complete manual release workflow
+[group('release')]
+release-all:
+    #!/usr/bin/env bash
+    echo "🚀 Starting complete manual release workflow..."
+    echo "=============================================="
+    echo ""
+    
+    # Extract version for logging
+    if command -v tq >/dev/null 2>&1; then
+        version=$(tq -f Cargo.toml -r '.package.version' 2>/dev/null)
+        name=$(tq -f Cargo.toml -r '.package.name' 2>/dev/null)
+    else
+        version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        name=$(grep '^name = ' Cargo.toml | head -1 | sed 's/name = "\(.*\)"/\1/')
+    fi
+    
+    echo "📦 Releasing: $name v$version"
+    echo ""
+    
+    # Step 1: Pre-commit validation
+    echo "1️⃣  Pre-commit validation..."
+    if ! just pre-commit; then
+        echo "❌ Pre-commit validation failed!"
+        exit 1
+    fi
+    echo ""
+    
+    # Step 2: Build cross-platform binaries
+    echo "2️⃣  Building cross-platform binaries..."
+    if ! just zigbuild-release; then
+        echo "❌ Cross-platform build failed!"
+        exit 1
+    fi
+    echo ""
+    
+    # Step 3: Validate artifacts
+    echo "3️⃣  Validating release artifacts..."
+    if ! just validate-artifacts; then
+        echo "❌ Artifact validation failed!"
+        exit 1
+    fi
+    echo ""
+    
+    # Step 4: Create GitHub release
+    echo "4️⃣  Creating GitHub release..."
+    if ! just create-github-release; then
+        echo "❌ GitHub release creation failed!"
+        exit 1
+    fi
+    echo ""
+    
+    # Step 5: Validate GitHub release
+    echo "5️⃣  Validating GitHub release..."
+    if ! just validate-github-release; then
+        echo "❌ GitHub release validation failed!"
+        exit 1
+    fi
+    echo ""
+    
+    # Step 6: Prompt to publish GitHub release
+    echo "6️⃣  Publishing GitHub release..."
+    tag="v$version"
+    read -p "Do you want to publish the GitHub release now? (y/N): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if gh release edit "$tag" --draft=false; then
+            echo "✅ GitHub release published!"
+        else
+            echo "❌ Failed to publish GitHub release!"
+            exit 1
+        fi
+    else
+        echo "⚠️  Skipping GitHub release publish"
+        echo "   You can publish later with: gh release edit '$tag' --draft=false"
+    fi
+    echo ""
+    
+    # Step 7: Final confirmation for cargo publish
+    echo "7️⃣  Cargo publish to crates.io..."
+    echo "⚠️  This will publish to crates.io and cannot be undone!"
+    read -p "Do you want to publish to crates.io now? (y/N): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if just cargo-publish; then
+            echo ""
+            echo "🎉 COMPLETE RELEASE SUCCESS!"
+            echo "=========================="
+            echo "✅ Cross-platform binaries built"
+            echo "✅ GitHub release published"
+            echo "✅ Published to crates.io"
+            echo ""
+            echo "🔗 GitHub Release: $(gh release view $tag --json url --jq .url)"
+            echo "📦 Crates.io: https://crates.io/crates/$name"
+            echo ""
+            echo "👥 Users can now install with:"
+            echo "   cargo binstall $name  (fast binary install)"
+            echo "   cargo install $name   (compile from source)"
+        else
+            echo "❌ Cargo publish failed!"
+            exit 1
+        fi
+    else
+        echo "⚠️  Skipping cargo publish"
+        echo "   You can publish later with: just cargo-publish"
+        echo ""
+        echo "🎯 Release Status:"
+        echo "✅ Cross-platform binaries built"
+        echo "✅ GitHub release ready"
+        echo "⏳ Cargo publish pending"
+    fi
 
