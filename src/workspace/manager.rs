@@ -1,8 +1,11 @@
 use anyhow::{Context, Result};
+use chrono::NaiveDateTime;
 use colored::*;
 use console::style;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
+
+use crate::cache::{GitStatusCache, RepositoryCache};
 
 use super::{
     config::{AppConfig, Repository, WorkspaceConfig},
@@ -30,6 +33,25 @@ pub struct AppConfigState {
 }
 
 #[derive(Debug, Clone)]
+pub struct BackupInfo {
+    pub file_name: String,
+    pub path: PathBuf,
+    pub size: u64,
+    pub created: std::time::SystemTime,
+    pub display_name: String,
+    pub contents: Option<BackupContents>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BackupContents {
+    pub has_config: bool,
+    pub has_state: bool,
+    pub has_templates: bool,
+    pub app_configs: Vec<String>,
+    pub total_files: usize,
+}
+
+#[derive(Debug, Clone)]
 pub struct RepoWithStatus {
     pub name: String,
     pub path: String,
@@ -42,6 +64,8 @@ pub struct WorkspaceManager {
     config_path: PathBuf,
     config: WorkspaceConfig,
     template_manager: TemplateManager,
+    repo_cache: Option<RepositoryCache>,
+    git_cache: Option<GitStatusCache>,
 }
 
 impl WorkspaceManager {
@@ -51,10 +75,17 @@ impl WorkspaceManager {
         let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
         let template_manager = TemplateManager::new(vibe_dir.join("templates"));
 
+        // Initialize caches
+        let cache_dir = vibe_dir.join("cache");
+        let repo_cache = Self::init_repository_cache(&cache_dir).await.ok();
+        let git_cache = Self::init_git_status_cache(&cache_dir).await.ok();
+
         Ok(Self {
             config_path,
             config,
             template_manager,
+            repo_cache,
+            git_cache,
         })
     }
 
@@ -74,10 +105,17 @@ impl WorkspaceManager {
         let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
         let template_manager = TemplateManager::new(vibe_dir.join("templates"));
 
+        // Initialize caches
+        let cache_dir = vibe_dir.join("cache");
+        let repo_cache = Self::init_repository_cache(&cache_dir).await.ok();
+        let git_cache = Self::init_git_status_cache(&cache_dir).await.ok();
+
         Ok(Self {
             config_path,
             config,
             template_manager,
+            repo_cache,
+            git_cache,
         })
     }
 
@@ -180,7 +218,7 @@ impl WorkspaceManager {
         let analysis = analyze_workspace(&self.config.workspace.root, &self.config, 3).await?;
 
         // Use hierarchical display for status
-        render_status_summary(&analysis);
+        render_status_summary(&analysis).await;
 
         // TODO: Add WIP branch detection and out-of-sync tracking branch detection
         // This should scan for:
@@ -1562,8 +1600,15 @@ impl WorkspaceManager {
             config_files.push(self.config_path.clone());
         }
 
-        // Templates directory
         let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+
+        // State file (user preferences and recent repos)
+        let state_file = vibe_dir.join("state.json");
+        if state_file.exists() {
+            config_files.push(state_file);
+        }
+
+        // Templates directory
         let templates_dir = vibe_dir.join("templates");
         if templates_dir.exists() {
             config_files.push(templates_dir);
@@ -1703,6 +1748,12 @@ impl WorkspaceManager {
                 tokio::fs::copy(config_file, &dest_path)
                     .await
                     .with_context(|| format!("Failed to copy {}", config_file.display()))?;
+            } else if file_name == "state.json" {
+                // State file goes to root
+                let dest_path = temp_path.join("state.json");
+                tokio::fs::copy(config_file, &dest_path)
+                    .await
+                    .with_context(|| format!("Failed to copy {}", config_file.display()))?;
             } else if config_file.to_string_lossy().contains("templates") {
                 // Templates directory
                 let dest_dir = temp_path.join("templates");
@@ -1712,8 +1763,10 @@ impl WorkspaceManager {
                 // App config files - organize by app type
                 let app_type = if file_name.ends_with(".yaml") {
                     "warp"
-                } else if file_name.ends_with(".json") {
+                } else if file_name.ends_with(".json") && file_name != "state.json" {
                     "iterm2"
+                } else if file_name.ends_with(".lua") {
+                    "wezterm"
                 } else if file_name.ends_with(".code-workspace") {
                     "vscode"
                 } else {
@@ -1938,6 +1991,699 @@ impl WorkspaceManager {
             style("💡").yellow()
         );
 
+        Ok(())
+    }
+
+    /// Get a repository by name
+    pub fn get_repository(&self, name: &str) -> Option<&Repository> {
+        self.config.get_repository(name)
+    }
+
+    /// List all repositories
+    pub fn list_repositories(&self) -> &[Repository] {
+        &self.config.repositories
+    }
+
+    /// Remove a repository from the workspace
+    pub async fn remove_repository(&mut self, name: &str) -> Result<()> {
+        self.config.repositories.retain(|r| r.name != name);
+        self.save_config().await?;
+        Ok(())
+    }
+
+    /// Check if an app is available on the system
+    pub async fn is_app_available(&self, app_name: &str) -> bool {
+        match app_name {
+            "vscode" => {
+                // Check if VS Code is available
+                tokio::process::Command::new("code")
+                    .arg("--version")
+                    .output()
+                    .await
+                    .map(|output| output.status.success())
+                    .unwrap_or(false)
+            }
+            "warp" => {
+                // Check if Warp is available
+                #[cfg(target_os = "macos")]
+                {
+                    tokio::fs::metadata("/Applications/Warp.app").await.is_ok()
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    false
+                }
+            }
+            "iterm2" => {
+                // Check if iTerm2 is available
+                #[cfg(target_os = "macos")]
+                {
+                    tokio::fs::metadata("/Applications/iTerm.app").await.is_ok()
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    false
+                }
+            }
+            "wezterm" => {
+                // Check if WezTerm is available
+                tokio::process::Command::new("wezterm")
+                    .arg("--version")
+                    .output()
+                    .await
+                    .map(|output| output.status.success())
+                    .unwrap_or(false)
+            }
+            _ => false,
+        }
+    }
+
+    // Cache management methods
+
+    /// Initialize repository cache
+    async fn init_repository_cache(cache_dir: &Path) -> Result<RepositoryCache> {
+        tokio::fs::create_dir_all(cache_dir).await?;
+        let repo_cache = RepositoryCache::new(cache_dir.join("repositories.db"));
+        repo_cache.initialize().await?;
+        Ok(repo_cache)
+    }
+
+    /// Initialize git status cache
+    async fn init_git_status_cache(cache_dir: &Path) -> Result<GitStatusCache> {
+        tokio::fs::create_dir_all(cache_dir).await?;
+        let git_cache = GitStatusCache::new(cache_dir.join("git_status.db"));
+        git_cache.initialize().await?;
+        Ok(git_cache)
+    }
+
+    /// Get repository cache (lazy initialization if needed)
+    pub async fn get_repository_cache(&mut self) -> Result<&RepositoryCache> {
+        if self.repo_cache.is_none() {
+            let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+            let cache_dir = vibe_dir.join("cache");
+            self.repo_cache = Some(Self::init_repository_cache(&cache_dir).await?);
+        }
+        Ok(self.repo_cache.as_ref().unwrap())
+    }
+
+    /// Get git status cache (lazy initialization if needed)
+    pub async fn get_git_status_cache(&mut self) -> Result<&GitStatusCache> {
+        if self.git_cache.is_none() {
+            let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+            let cache_dir = vibe_dir.join("cache");
+            self.git_cache = Some(Self::init_git_status_cache(&cache_dir).await?);
+        }
+        Ok(self.git_cache.as_ref().unwrap())
+    }
+
+    /// Refresh repository cache from current configuration
+    pub async fn refresh_repository_cache(&mut self) -> Result<()> {
+        // Get repositories data first to avoid borrowing issues
+        let repositories = self.config.repositories.clone();
+        let workspace_root = self.config.workspace.root.clone();
+        let current_names: Vec<String> = repositories.iter().map(|r| r.name.clone()).collect();
+
+        if let Ok(cache) = self.get_repository_cache().await {
+            cache
+                .refresh_from_config(&repositories, &workspace_root)
+                .await?;
+            cache.cleanup_stale_entries(&current_names).await?;
+        }
+        Ok(())
+    }
+
+    /// Update git status cache for repositories (background operation)
+    pub async fn update_git_status_cache(&mut self, repo_names: &[String]) -> Result<()> {
+        // Clone data to avoid borrowing issues
+        let repositories = self.config.repositories.clone();
+        let workspace_root = self.config.workspace.root.clone();
+
+        if let Ok(cache) = self.get_git_status_cache().await {
+            for repo_name in repo_names {
+                if let Some(repo_config) = repositories.iter().find(|r| r.name == *repo_name) {
+                    let repo_path = workspace_root.join(&repo_config.path);
+
+                    match get_git_status(&repo_path).await {
+                        Ok(git_status) => {
+                            let cached_status = git_status.into();
+                            if let Err(e) = cache.cache_git_status(&cached_status).await {
+                                warn!("Failed to cache git status for {}: {}", repo_name, e);
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to get git status for {}: {}", repo_name, e);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Get quick launcher for fast repository selection
+    pub async fn get_quick_launcher(&self) -> Result<crate::ui::quick_launcher::QuickLauncher> {
+        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let cache_dir = vibe_dir.join("cache");
+        crate::ui::quick_launcher::QuickLauncher::new(&cache_dir).await
+    }
+
+    // Page size access methods
+
+    /// Get page size for main menu
+    pub fn get_main_menu_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.main_menu)
+            .unwrap_or(15)
+    }
+
+    /// Get page size for repository list
+    pub fn get_repository_list_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.repository_list)
+            .unwrap_or(15)
+    }
+
+    /// Get page size for quick launch
+    pub fn get_quick_launch_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.quick_launch)
+            .unwrap_or(9)
+    }
+
+    /// Get page size for app selection
+    pub fn get_app_selection_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.app_selection)
+            .unwrap_or(10)
+    }
+
+    /// Get page size for git search results
+    pub fn get_git_search_results_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.git_search_results)
+            .unwrap_or(15)
+    }
+
+    /// Get page size for management menus
+    pub fn get_management_menus_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.management_menus)
+            .unwrap_or(10)
+    }
+
+    /// Get page size for app installer
+    pub fn get_app_installer_page_size(&self) -> usize {
+        self.config
+            .preferences
+            .as_ref()
+            .map(|p| p.page_sizes.app_installer)
+            .unwrap_or(15)
+    }
+
+    // Backup and Restore methods
+
+    /// List available backup files in the default backup directory
+    pub async fn list_available_backups(&self) -> Result<Vec<BackupInfo>> {
+        let backup_dir = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".vibe-workspace")
+            .join("backups");
+
+        if !backup_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut backups = Vec::new();
+        let mut entries = tokio::fs::read_dir(&backup_dir).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            if let Some(extension) = path.extension() {
+                if extension == "tgz" {
+                    let metadata = entry.metadata().await?;
+                    let file_name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
+
+                    // Analyze backup contents (optional, for display purposes)
+                    let contents = self.analyze_backup(&path).await.ok();
+
+                    backups.push(BackupInfo {
+                        file_name: file_name.clone(),
+                        path: path.clone(),
+                        size: metadata.len(),
+                        created: metadata.created().unwrap_or(std::time::UNIX_EPOCH),
+                        display_name: self.format_backup_display_name(&file_name),
+                        contents,
+                    });
+                }
+            }
+        }
+
+        // Sort by creation time, newest first
+        backups.sort_by(|a, b| b.created.cmp(&a.created));
+        Ok(backups)
+    }
+
+    /// Format backup file name for display
+    fn format_backup_display_name(&self, file_name: &str) -> String {
+        // Remove .tgz extension and format timestamp
+        let name_without_ext = file_name.strip_suffix(".tgz").unwrap_or(file_name);
+
+        if let Some(timestamp_part) = name_without_ext.strip_prefix("vibe-backup-") {
+            if let Ok(parsed) =
+                chrono::NaiveDateTime::parse_from_str(timestamp_part, "%Y%m%d-%H%M%S")
+            {
+                return format!(
+                    "{} (created {})",
+                    name_without_ext,
+                    parsed.format("%Y-%m-%d %H:%M:%S")
+                );
+            }
+        }
+
+        name_without_ext.to_string()
+    }
+
+    /// Format file size for human-readable display
+    fn format_file_size(bytes: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = KB * 1024;
+        const GB: u64 = MB * 1024;
+
+        if bytes >= GB {
+            format!("{:.1} GB", bytes as f64 / GB as f64)
+        } else if bytes >= MB {
+            format!("{:.1} MB", bytes as f64 / MB as f64)
+        } else if bytes >= KB {
+            format!("{:.1} kB", bytes as f64 / KB as f64)
+        } else {
+            format!("{} B", bytes)
+        }
+    }
+
+    /// Restore configuration from a backup file
+    pub async fn restore_from_backup(
+        &mut self,
+        backup_path: Option<PathBuf>,
+        force: bool,
+    ) -> Result<()> {
+        let backup_file = if let Some(path) = backup_path {
+            path
+        } else {
+            // Interactive selection
+            self.select_backup_interactively().await?
+        };
+
+        if !backup_file.exists() {
+            anyhow::bail!("Backup file does not exist: {}", backup_file.display());
+        }
+
+        // Analyze backup contents
+        let backup_contents = self.analyze_backup(&backup_file).await?;
+
+        if !force {
+            self.confirm_restore(&backup_file, &backup_contents).await?;
+        }
+
+        println!("{} Starting restore process...", style("🔄").blue());
+
+        // Perform factory reset first
+        println!(
+            "{} Clearing existing configuration...",
+            style("🗑️").yellow()
+        );
+        self.factory_reset_with_options(true, true).await?;
+
+        // Extract and restore backup
+        self.extract_backup(&backup_file).await?;
+
+        // Reinitialize caches
+        println!("{} Rebuilding cache databases...", style("🔄").blue());
+        self.reinitialize_caches().await?;
+
+        // Reload configuration
+        self.config = WorkspaceConfig::load_from_file(&self.config_path).await?;
+
+        println!(
+            "{} Restore completed successfully!",
+            style("✅").green().bold()
+        );
+        println!(
+            "{} Run 'vibe menu' to continue using Vibe Workspace",
+            style("💡").blue()
+        );
+
+        Ok(())
+    }
+
+    /// Interactive backup selection
+    async fn select_backup_interactively(&self) -> Result<PathBuf> {
+        let backups = self.list_available_backups().await?;
+
+        if backups.is_empty() {
+            anyhow::bail!("No backup files found in ~/.vibe-workspace/backups/");
+        }
+
+        println!("\n{} Available backups:", style("📦").blue());
+
+        let backup_options: Vec<String> = backups
+            .iter()
+            .map(|backup| {
+                let size_str = Self::format_file_size(backup.size);
+                let mut details = vec![size_str];
+
+                if let Some(contents) = &backup.contents {
+                    let mut content_parts = Vec::new();
+                    if contents.has_config {
+                        content_parts.push("config".to_string());
+                    }
+                    if contents.has_state {
+                        content_parts.push("state".to_string());
+                    }
+                    if contents.has_templates {
+                        content_parts.push("templates".to_string());
+                    }
+                    if !contents.app_configs.is_empty() {
+                        content_parts.push(format!("{} apps", contents.app_configs.len()));
+                    }
+
+                    if !content_parts.is_empty() {
+                        details.push(format!("{} files", contents.total_files));
+                        details.push(content_parts.join("+"));
+                    }
+                }
+
+                format!("{} ({})", backup.display_name, details.join(", "))
+            })
+            .collect();
+
+        use inquire::Select;
+        let selection = Select::new("Select backup to restore:", backup_options)
+            .with_help_message("Use arrow keys to navigate, Enter to select")
+            .with_page_size(10)
+            .prompt()?;
+
+        // Find the selected backup by matching the display format
+        let selected_backup = backups
+            .iter()
+            .find(|backup| {
+                let size_str = Self::format_file_size(backup.size);
+                let mut details = vec![size_str];
+
+                if let Some(contents) = &backup.contents {
+                    let mut content_parts = Vec::new();
+                    if contents.has_config {
+                        content_parts.push("config".to_string());
+                    }
+                    if contents.has_state {
+                        content_parts.push("state".to_string());
+                    }
+                    if contents.has_templates {
+                        content_parts.push("templates".to_string());
+                    }
+                    if !contents.app_configs.is_empty() {
+                        content_parts.push(format!("{} apps", contents.app_configs.len()));
+                    }
+
+                    if !content_parts.is_empty() {
+                        details.push(format!("{} files", contents.total_files));
+                        details.push(content_parts.join("+"));
+                    }
+                }
+
+                let display = format!("{} ({})", backup.display_name, details.join(", "));
+                display == selection
+            })
+            .context("Selected backup not found")?;
+
+        Ok(selected_backup.path.clone())
+    }
+
+    /// Analyze backup contents
+    async fn analyze_backup(&self, backup_path: &Path) -> Result<BackupContents> {
+        use std::process::Command;
+
+        // List contents of the tar file
+        let output = Command::new("tar")
+            .args(["-tzf"])
+            .arg(backup_path)
+            .output()
+            .context("Failed to analyze backup archive")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to read backup archive: Invalid or corrupted file");
+        }
+
+        let contents_list = String::from_utf8_lossy(&output.stdout);
+        let files: Vec<String> = contents_list.lines().map(|s| s.to_string()).collect();
+
+        let mut contents = BackupContents {
+            has_config: false,
+            has_state: false,
+            has_templates: false,
+            app_configs: Vec::new(),
+            total_files: files.len(),
+        };
+
+        for file in &files {
+            // Remove leading ./ if present
+            let clean_file = file.strip_prefix("./").unwrap_or(file);
+
+            if clean_file == "config.yaml" {
+                contents.has_config = true;
+            } else if clean_file == "state.json" {
+                contents.has_state = true;
+            } else if clean_file.starts_with("templates/") {
+                contents.has_templates = true;
+            } else if clean_file.starts_with("app-configs/") {
+                let parts: Vec<&str> = clean_file.split('/').collect();
+                if parts.len() >= 2 && !contents.app_configs.contains(&parts[1].to_string()) {
+                    contents.app_configs.push(parts[1].to_string());
+                }
+            }
+        }
+
+        Ok(contents)
+    }
+
+    /// Confirm restore operation with user
+    async fn confirm_restore(&self, backup_path: &Path, contents: &BackupContents) -> Result<()> {
+        use inquire::Confirm;
+
+        println!(
+            "\n{} {}",
+            style("⚠️  RESTORE CONFIRMATION").yellow().bold(),
+            style("This will replace ALL current configuration!").yellow()
+        );
+        println!();
+
+        // Get backup file size
+        let backup_size = if let Ok(metadata) = std::fs::metadata(backup_path) {
+            Self::format_file_size(metadata.len())
+        } else {
+            "unknown".to_string()
+        };
+
+        println!(
+            "{} Backup file: {} ({})",
+            style("📦").blue(),
+            backup_path.display(),
+            backup_size
+        );
+        println!("{} Backup contains:", style("📋").blue());
+
+        if contents.has_config {
+            println!("  {} Main configuration (config.yaml)", style("✓").green());
+        }
+        if contents.has_state {
+            println!(
+                "  {} User state and preferences (state.json)",
+                style("✓").green()
+            );
+        }
+        if contents.has_templates {
+            println!("  {} Template files", style("✓").green());
+        }
+        if !contents.app_configs.is_empty() {
+            println!(
+                "  {} App configurations: {}",
+                style("✓").green(),
+                contents.app_configs.join(", ")
+            );
+        }
+
+        // Show what's missing from backup (if anything)
+        if !contents.has_config {
+            println!("  {} Main configuration (missing)", style("⚠️").yellow());
+        }
+        if !contents.has_state {
+            println!(
+                "  {} User state (missing - will use defaults)",
+                style("ℹ️").blue()
+            );
+        }
+
+        println!(
+            "  {} Total files: {}",
+            style("📊").blue(),
+            contents.total_files
+        );
+        println!();
+
+        println!("{} This will:", style("⚠️").yellow());
+        println!("  • Delete all current configuration");
+        println!("  • Delete all app-generated files");
+        println!("  • Restore configuration from backup");
+        println!("  • Rebuild cache databases");
+        println!();
+
+        let confirm = Confirm::new("Are you sure you want to proceed with the restore?")
+            .with_default(false)
+            .prompt()?;
+
+        if !confirm {
+            anyhow::bail!("Restore cancelled by user");
+        }
+
+        Ok(())
+    }
+
+    /// Extract backup archive
+    async fn extract_backup(&self, backup_path: &Path) -> Result<()> {
+        use std::process::Command;
+
+        // Create temporary extraction directory
+        let temp_dir = tempfile::tempdir().context("Failed to create temporary directory")?;
+        let temp_path = temp_dir.path();
+
+        // Extract archive
+        println!("{} Extracting backup archive...", style("📦").blue());
+        let output = Command::new("tar")
+            .args(["-xzf"])
+            .arg(backup_path)
+            .args(["-C"])
+            .arg(temp_path)
+            .output()
+            .context("Failed to extract backup archive")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to extract backup: {}", error_msg);
+        }
+
+        // Copy files to their proper locations
+        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        tokio::fs::create_dir_all(&vibe_dir).await?;
+
+        // Copy main config file
+        let config_src = temp_path.join("config.yaml");
+        if config_src.exists() {
+            tokio::fs::copy(&config_src, &self.config_path).await?;
+            println!("{} Restored main configuration", style("✓").green());
+        }
+
+        // Copy state file
+        let state_src = temp_path.join("state.json");
+        let state_dest = vibe_dir.join("state.json");
+        if state_src.exists() {
+            tokio::fs::copy(&state_src, &state_dest).await?;
+            println!("{} Restored user state", style("✓").green());
+        }
+
+        // Copy templates directory
+        let templates_src = temp_path.join("templates");
+        let templates_dest = vibe_dir.join("templates");
+        if templates_src.exists() {
+            if templates_dest.exists() {
+                tokio::fs::remove_dir_all(&templates_dest).await?;
+            }
+            copy_dir_recursive(&templates_src, &templates_dest)?;
+            println!("{} Restored templates", style("✓").green());
+        }
+
+        // Copy app configuration files
+        let app_configs_src = temp_path.join("app-configs");
+        if app_configs_src.exists() {
+            self.restore_app_configs(&app_configs_src).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Restore app configuration files to their proper locations
+    async fn restore_app_configs(&self, app_configs_dir: &Path) -> Result<()> {
+        // Load the configuration to get app integration settings
+        let temp_config = WorkspaceConfig::load_from_file(&self.config_path).await?;
+
+        // Restore each app type
+        for app_type in ["warp", "iterm2", "wezterm", "vscode"] {
+            let app_dir = app_configs_dir.join(app_type);
+            if !app_dir.exists() {
+                continue;
+            }
+
+            let dest_dir = match app_type {
+                "warp" => temp_config.apps.warp.as_ref().map(|w| &w.config_dir),
+                "iterm2" => temp_config.apps.iterm2.as_ref().map(|i| &i.config_dir),
+                "wezterm" => temp_config.apps.wezterm.as_ref().map(|w| &w.config_dir),
+                "vscode" => temp_config.apps.vscode.as_ref().map(|v| &v.workspace_dir),
+                _ => None,
+            };
+
+            if let Some(dest) = dest_dir {
+                tokio::fs::create_dir_all(dest).await?;
+                copy_dir_recursive(&app_dir, dest)?;
+                println!(
+                    "{} Restored {} configurations",
+                    style("✓").green(),
+                    app_type
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Reinitialize cache databases after restore
+    async fn reinitialize_caches(&mut self) -> Result<()> {
+        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let cache_dir = vibe_dir.join("cache");
+
+        // Remove existing cache files
+        if cache_dir.exists() {
+            tokio::fs::remove_dir_all(&cache_dir).await?;
+        }
+
+        // Reinitialize caches
+        tokio::fs::create_dir_all(&cache_dir).await?;
+        self.repo_cache = Some(Self::init_repository_cache(&cache_dir).await?);
+        self.git_cache = Some(Self::init_git_status_cache(&cache_dir).await?);
+
+        // Populate repository cache from restored configuration
+        let repositories = self.config.repositories.clone();
+        let workspace_root = self.config.workspace.root.clone();
+        if let Ok(cache) = self.get_repository_cache().await {
+            cache
+                .refresh_from_config(&repositories, &workspace_root)
+                .await?;
+        }
+
+        println!("{} Cache databases rebuilt", style("✓").green());
         Ok(())
     }
 }

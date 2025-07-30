@@ -4,7 +4,7 @@ This guide explains how to configure and use app integrations in Vibe Workspace 
 
 ## Quick Start
 
-**Interactive Mode** (recommended): Just run `vibe` with no arguments to access the interactive menu:
+**Menu Mode** (recommended): Just run `vibe` with no arguments to access the interactive menu:
 ```bash
 vibe
 ```

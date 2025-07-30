@@ -1,226 +1,256 @@
 # Vibe Workspace Quick Start
 
-## Git Repository Management
+## 🎉 First-Time Setup
 
-### Repository Discovery and Analysis
+### Getting Started with Setup Wizard
+
+The easiest way to get started with Vibe Workspace is to run the setup wizard:
+
 ```bash
-# Scan workspace for all git repositories
-vibe git scan
-
-# Import newly discovered repositories to your config
-vibe git scan --import
-
-# Scan with specific options
-vibe git scan --depth 5                # Scan deeper directory levels
-vibe git scan --clean                   # Remove missing repositories from config
-vibe git scan --restore                 # Re-clone missing repositories from remote
+# Run the interactive setup wizard
+vibe setup
 ```
+
+Or just run `vibe` with no arguments - if it's your first time, you'll automatically be prompted to run the setup wizard.
+
+### What the Setup Wizard Does
+
+The setup wizard walks you through 3 simple steps:
+
+**Step 1: Repository Discovery**
+- Automatically scans your workspace for git repositories
+- Shows you what it found organized by Git hosting organization:
+  ```
+  📁 toolprint (3 repos)
+    ✅ vibe-workspace (/Users/dev/workspace/vibe-workspace)
+    🆕 new-tool (/Users/dev/workspace/new-tool)
+  
+  📁 microsoft (2 repos)  
+    ✅ vscode (/Users/dev/workspace/vscode)
+    ❌ missing-repo (tracked but missing)
+  ```
+- Prompts to add discovered repositories to your workspace
+
+**Step 2: App Installation Check**
+- Checks which supported apps you have installed:
+  - ✅ VS Code, Warp Terminal, iTerm2, WezTerm
+- Offers to install missing apps if needed
+
+**Step 3: Default App Configuration**
+- Lets you choose a default app for opening repositories
+- Automatically configures all discovered repositories with your chosen app
+
+### Skip Setup (Advanced)
+```bash
+# Skip the setup wizard entirely
+vibe setup --skip
+```
+
+## 🚀 Essential Commands After Setup
+
+### Quick Launch (The Fastest Way)
+
+Once setup is complete, these are the quickest ways to work with your repositories:
+
+```bash
+# Launch the interactive menu
+vibe
+
+# Quick launch recent repositories by number (1-9)
+vibe launch 1    # Opens your most recent repository
+vibe launch 2    # Opens your second most recent repository
+vibe launch      # Opens your most recent repository (no number)
+```
+
+**Pro tip**: In the interactive menu, just press number keys `1-9` to instantly launch recent repositories!
+
+### Clone and Open in One Command
+
+The `vibe go` command is perfect for quickly getting started with new repositories:
+
+```bash
+# Clone, configure, and open a repository in one command
+vibe go https://github.com/owner/repo
+
+# Clone with a specific app
+vibe go https://github.com/owner/repo --app vscode
+
+# Just clone without opening
+vibe go https://github.com/owner/repo --no-open
+```
+
+This command automatically:
+1. Clones the repository to your workspace
+2. Prompts you to configure an app (VS Code, Warp, etc.)
+3. Opens the repository with your chosen app
+4. Adds it to your recent repositories for quick access
+
+### Interactive Menu Navigation
+
+The main menu adapts to your workspace state with smart actions:
+
+```bash
+vibe  # Launch interactive menu
+```
+
+**🏃 Quick Launch Section**: Press `1-9` to instantly open recent repositories
+
+**🧠 Smart Actions** (context-aware suggestions):
+- "🎉 Run setup wizard" - If you're a first-time user
+- "🔍 Discover repositories" - If no repositories found
+- "⚙️ Configure apps for X repos" - If you have unconfigured repositories
+- "📦 Install apps" - If supported apps aren't installed
+- "🔄 Sync repositories" - If repositories need updating
+- "🔍 Clone & Open" - Search GitHub and clone repositories
+
+**Navigation**: Use `ESC` key to go back or exit at any time.
+
+## 🔧 Repository Management
 
 ### Repository Status Understanding
-- **✅ Tracked** - Repository exists on filesystem and is tracked in config
-- **🆕 New** - Repository exists on filesystem but not tracked in config
-- **❌ Missing** - Repository is tracked in config but missing from filesystem
+- **✅ Tracked** - Repository exists and is properly configured
+- **🆕 New** - Repository found but not yet tracked in your config
+- **❌ Missing** - Repository is tracked but missing from filesystem
 
-### Repository Lifecycle Management
+### Discover and Import Repositories
 ```bash
-# Clear all repository tracking (preserves other settings)
-vibe git reset                          # With confirmation prompt
-vibe git reset --force                  # Skip confirmation
+# Scan workspace for repositories (non-destructive)
+vibe git scan
 
-# Synchronize repositories
-vibe git sync                           # Fetch and pull all repositories  
-vibe git sync --fetch-only              # Only fetch, don't pull
-vibe git sync --save-dirty              # Save dirty changes before sync
-```
+# Import newly discovered repositories
+vibe git scan --import
 
-### Repository Organization Display
-Repositories are automatically organized by Git hosting organization:
-```
-📁 toolprint (3 repos)
-  ✅ vibe-workspace (/Users/dev/workspace/vibe-workspace)
-  🆕 new-tool (/Users/dev/workspace/new-tool)
+# Scan deeper directory levels
+vibe git scan --depth 5
 
-📁 microsoft (2 repos)  
-  ✅ vscode (/Users/dev/workspace/vscode)
-  ❌ missing-repo (tracked but missing)
-```
+# Clean up missing repositories from config
+vibe git scan --clean
 
-## App Integration Quick Usage
-
-### Configure an app for a repository
-```bash
-# Use default template
-vibe apps configure <repo-name> warp
-
-# Use specific template
-vibe apps configure <repo-name> vscode --template react-dev
-```
-
-### Open a repository with an app
-```bash
-# Open with specific app
-vibe open <repo-name> --app warp
-
-# Open with default/only configured app
-vibe open <repo-name>
-```
-
-### Manage templates
-```bash
-# List available templates
-vibe apps template list warp
-
-# Create a new template
-vibe apps template create warp my-custom --from-file ./my-warp-template.yaml
-
-# Delete a template
-vibe apps template delete warp my-custom
-```
-
-### Show configurations
-```bash
-# Show all app configurations
-vibe apps show
-
-# Show apps for a specific repository
-vibe apps show --repo my-repo
-
-# Show repositories with a specific app
-vibe apps show --app warp
-```
-
-## Repository Opening Apps
-
-- **Warp Terminal** (`warp`) - Multi-pane terminal layouts with AI features
-- **iTerm2** (`iterm2`) - Dynamic profiles with badges and color schemes
-- **WezTerm** (`wezterm`) - GPU-accelerated cross-platform terminal
-- **Visual Studio Code** (`vscode`) - Workspace files with extensions and tasks
-
-## Complete Workflow Example
-
-### Initial Setup
-1. Initialize workspace and discover repositories:
-   ```bash
-   vibe init --name "my-workspace"
-   vibe git scan --import              # Auto-discover and import repositories
-   ```
-
-2. Review discovered repositories:
-   ```bash
-   vibe git scan                       # Shows organized repository structure
-   ```
-
-### Repository Management
-3. Configure apps for your repositories:
-   ```bash
-   vibe apps configure frontend vscode
-   vibe apps configure backend warp
-   vibe apps configure mobile iterm2
-   vibe apps configure api wezterm
-   ```
-
-4. Open repositories quickly:
-   ```bash
-   vibe open frontend    # Opens with VS Code
-   vibe open backend     # Opens with Warp
-   vibe open mobile      # Opens with iTerm2
-   vibe open api         # Opens with WezTerm
-   ```
-
-### Ongoing Maintenance
-5. Keep repositories synchronized:
-   ```bash
-   vibe git sync --save-dirty          # Save changes and sync all repos
-   ```
-
-6. Add new repositories as you discover them:
-   ```bash
-   vibe git scan --import              # Import newly found repositories
-   vibe git clone <new-repo-url>       # Clone and automatically add new repositories
-   ```
-
-7. Fresh start when needed:
-   ```bash
-   vibe git reset --force              # Clear repository config
-   vibe git scan --import              # Re-discover repositories
-   ```
-
-## Template Variables
-
-All templates support these variables:
-- `{{workspace_name}}` - Your vibe workspace name
-- `{{repo_name}}` - Repository name
-- `{{repo_path}}` - Full path to repository
-- `{{repo_branch}}` - Default branch
-- `{{repo_url}}` - Repository URL
-
-## Templates Location
-
-Templates are stored in:
-```
-~/.vibe-workspace/templates/
-├── warp/
-│   └── default.yaml
-├── iterm2/
-│   └── default.json
-├── wezterm/
-│   └── default.yaml
-└── vscode/
-    └── default.json
-```
-
-## Repository Status Troubleshooting
-
-### Common Repository Issues and Solutions
-
-**Issue: Repositories showing as "Missing" after system changes**
-```bash
-# Solution: Restore missing repositories from remote
+# Restore missing repositories from remote
 vibe git scan --restore
 ```
 
-**Issue: Duplicate repositories in different locations**
+### Configure Apps for Repositories
 ```bash
-# Solution: Clean up duplicates and re-scan
-vibe git reset --force                  # Clear config
-vibe git scan --import                  # Re-discover repositories
+# Configure an app for a specific repository
+vibe apps configure my-repo vscode
+vibe apps configure my-repo warp --template custom
+
+# Show current configurations
+vibe apps show
+vibe apps show --repo my-repo
+vibe apps show --app warp
 ```
 
-**Issue: Repository not detected during scan**
+### Open Repositories
 ```bash
-# Solution: Check if it's a valid git repository
-cd /path/to/suspected/repo
-git status                              # Should show git info
+# Open with configured app
+vibe open my-repo
 
-# Or increase scan depth
-vibe git scan --depth 5                # Scan deeper directory levels
+# Open with specific app
+vibe open my-repo --app warp
+
+# Launch most recent repository
+vibe launch
+
+# Launch by recent repository number
+vibe launch 3
 ```
 
-**Issue: Too many "New" repositories cluttering the display**
+## 📱 Supported Apps
+
+- **VS Code** (`vscode`) - Workspace files with extensions and tasks
+- **Warp Terminal** (`warp`) - Multi-pane terminal layouts with AI features  
+- **iTerm2** (`iterm2`) - Dynamic profiles with badges and color schemes
+- **WezTerm** (`wezterm`) - GPU-accelerated cross-platform terminal
+
+## 🔄 Ongoing Maintenance
+
+### Keep Repositories Synchronized
 ```bash
-# Solution: Import only the ones you want
-vibe git scan                           # Review what's found
-vibe apps configure wanted-repo vscode  # Configure specific repositories
-# Don't run --import until you've decided which repos to track
+# Sync all repositories (fetch and pull)
+vibe git sync
+
+# Only fetch updates (don't pull)
+vibe git sync --fetch-only
+
+# Save dirty changes before sync
+vibe git sync --save-dirty
 ```
 
-**Issue: Need to start fresh with repository tracking**
+### Fresh Start When Needed
 ```bash
-# Solution: Complete reset and selective re-import
-vibe git reset --force                  # Clear all tracked repositories
-vibe git scan                           # See what's available
-vibe git scan --import                  # Import everything
-# Or manually configure specific repositories
+# Clear repository configuration (keeps other settings)
+vibe git reset
+
+# Clear and re-discover repositories
+vibe git reset --force
+vibe git scan --import
 ```
 
-### Repository Status Summary
+## 🎯 Complete Workflow Examples
 
-The repository status system helps you understand your workspace:
+### New Developer Onboarding
+```bash
+# 1. First time setup
+vibe setup                    # Run setup wizard
 
-- **Tracked (✅)**: Everything is working correctly
-- **New (🆕)**: Found repositories you might want to add
-- **Missing (❌)**: Repositories that may have been moved or deleted
+# 2. Clone and start working on a project
+vibe go https://github.com/company/main-app
 
-Use `vibe git scan` regularly to keep your workspace organized and up-to-date.
+# 3. Quick access later
+vibe launch 1                 # Opens main-app instantly
+```
 
-For detailed documentation, see [docs/APPS.md](./APPS.md).
+### Daily Development Workflow
+```bash
+# Morning: Launch your main project
+vibe launch 1
+
+# Switch to another project
+vibe launch 2
+
+# Clone a new repository you need to work on
+vibe go https://github.com/team/new-feature
+
+# End of day: Sync all repositories
+vibe git sync --save-dirty
+```
+
+### Team Repository Management
+```bash
+# Discover all team repositories in your workspace
+vibe git scan --import
+
+# Configure VS Code for all frontend repositories
+vibe apps configure frontend-app vscode
+vibe apps configure web-dashboard vscode
+
+# Configure Warp for all backend repositories  
+vibe apps configure api-server warp
+vibe apps configure worker-service warp
+
+# Quick access to any project
+vibe                          # Interactive menu with all projects
+```
+
+## 💡 Pro Tips
+
+1. **Number Shortcuts**: In the main menu, press `1-9` to instantly launch recent repositories
+2. **ESC Navigation**: Use ESC to go back in any menu or cancel any prompt
+3. **Quick Commands**: Use `vibe launch 1` from anywhere to open your most recent repository
+4. **Smart Menu**: The menu shows different options based on your workspace state
+5. **Template System**: Customize how repositories open with templates in `~/.vibe-workspace/templates/`
+6. **Recent History**: Your last 15 repositories are always accessible via quick launch
+
+## 🆘 Troubleshooting
+
+**"No repositories found"**: Run `vibe git scan --import` to discover repositories
+
+**"Repository not opening"**: Check if the app is configured with `vibe apps show --repo <name>`
+
+**"Can't find recent repository"**: Use `vibe` menu to browse all repositories
+
+**"Setup wizard not showing"**: Run `vibe setup` manually or reset with `vibe config reset`
+
+For detailed app configuration and advanced features, see [APPS.md](./APPS.md) and [NAVIGATION.md](./NAVIGATION.md).

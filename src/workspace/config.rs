@@ -10,6 +10,8 @@ pub struct WorkspaceConfig {
     pub repositories: Vec<Repository>,
     pub groups: Vec<RepositoryGroup>,
     pub apps: AppIntegrations,
+    #[serde(default)]
+    pub preferences: Option<Preferences>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +107,30 @@ pub struct VSCodeIntegration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Preferences {
+    #[serde(default)]
+    pub page_sizes: PageSizes,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PageSizes {
+    #[serde(default = "default_main_menu_page_size")]
+    pub main_menu: usize,
+    #[serde(default = "default_repository_list_page_size")]
+    pub repository_list: usize,
+    #[serde(default = "default_quick_launch_page_size")]
+    pub quick_launch: usize,
+    #[serde(default = "default_app_selection_page_size")]
+    pub app_selection: usize,
+    #[serde(default = "default_git_search_results_page_size")]
+    pub git_search_results: usize,
+    #[serde(default = "default_management_menus_page_size")]
+    pub management_menus: usize,
+    #[serde(default = "default_app_installer_page_size")]
+    pub app_installer: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AppIntegration {
     Simple(bool),
@@ -168,6 +194,7 @@ impl Default for WorkspaceConfig {
                     default_template: "default".to_string(),
                 }),
             },
+            preferences: Some(Preferences::default()),
         }
     }
 }
@@ -403,4 +430,81 @@ fn default_vscode_template_dir() -> PathBuf {
         .join(".vibe-workspace")
         .join("templates")
         .join("vscode")
+}
+
+// Page size defaults
+fn default_main_menu_page_size() -> usize {
+    15
+}
+
+fn default_repository_list_page_size() -> usize {
+    15
+}
+
+fn default_quick_launch_page_size() -> usize {
+    9
+}
+
+fn default_app_selection_page_size() -> usize {
+    10
+}
+
+fn default_git_search_results_page_size() -> usize {
+    15
+}
+
+fn default_management_menus_page_size() -> usize {
+    10
+}
+
+fn default_app_installer_page_size() -> usize {
+    15
+}
+
+impl Default for PageSizes {
+    fn default() -> Self {
+        Self {
+            main_menu: default_main_menu_page_size(),
+            repository_list: default_repository_list_page_size(),
+            quick_launch: default_quick_launch_page_size(),
+            app_selection: default_app_selection_page_size(),
+            git_search_results: default_git_search_results_page_size(),
+            management_menus: default_management_menus_page_size(),
+            app_installer: default_app_installer_page_size(),
+        }
+    }
+}
+
+impl Default for Preferences {
+    fn default() -> Self {
+        Self {
+            page_sizes: PageSizes::default(),
+        }
+    }
+}
+
+impl PageSizes {
+    /// Validate page size values and return errors for invalid ranges
+    pub fn validate(&self) -> Result<()> {
+        if self.quick_launch == 0 || self.quick_launch > 9 {
+            anyhow::bail!("quick_launch page size must be between 1 and 9 (limited by number key shortcuts), got {}", self.quick_launch);
+        }
+
+        let sizes = [
+            ("main_menu", self.main_menu),
+            ("repository_list", self.repository_list),
+            ("app_selection", self.app_selection),
+            ("git_search_results", self.git_search_results),
+            ("management_menus", self.management_menus),
+            ("app_installer", self.app_installer),
+        ];
+
+        for (name, size) in &sizes {
+            if *size == 0 || *size > 15 {
+                anyhow::bail!("{} page size must be between 1 and 15, got {}", name, size);
+            }
+        }
+
+        Ok(())
+    }
 }

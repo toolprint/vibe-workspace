@@ -1,6 +1,7 @@
 use console::style;
 use std::collections::HashMap;
 
+use crate::workspace::operations::get_git_status;
 use crate::workspace::repo_analyzer::{NonGitFolder, RepoInfo, RepoStatus, WorkspaceAnalysis};
 
 pub struct DisplayOptions {
@@ -217,8 +218,8 @@ pub fn render_repository_status_table(repos: &[RepoInfo], title: &str) {
     println!();
 }
 
-// Format for status command output - more compact, git-status style
-pub fn render_status_summary(analysis: &WorkspaceAnalysis) {
+// Format for status command output - hierarchical with detailed git status
+pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
     let tracked_repos = analysis.get_tracked_repos();
 
     if tracked_repos.is_empty() {
@@ -226,16 +227,10 @@ pub fn render_status_summary(analysis: &WorkspaceAnalysis) {
         return;
     }
 
-    // TODO: Add WIP branch detection and out-of-sync tracking branch detection
-    // This should scan for:
-    // - Local branches with 'dirty/' or 'wip/' prefix
-    // - Branches that are ahead/behind their tracking branch
-    // - Uncommitted changes in working directory
-
     println!("{} Repository Status Summary", style("📊").blue().bold());
     println!("{}", "─".repeat(50));
 
-    // Group by organization for status display too
+    // Group by organization for status display
     let mut org_groups: HashMap<String, Vec<&RepoInfo>> = HashMap::new();
     for repo in &tracked_repos {
         let org_name = repo.organization.as_deref().unwrap_or("Other").to_string();
@@ -248,6 +243,9 @@ pub fn render_status_summary(analysis: &WorkspaceAnalysis) {
     let mut org_names: Vec<_> = org_groups.keys().collect();
     org_names.sort();
 
+    let mut total_clean = 0;
+    let mut total_dirty = 0;
+
     for org_name in org_names {
         let repos = &org_groups[org_name];
 
@@ -259,12 +257,80 @@ pub fn render_status_summary(analysis: &WorkspaceAnalysis) {
         );
 
         for repo in repos {
-            // For now, just show the repo name - in the future this will show git status
-            println!("  {} {}", style("✓").green(), style(&repo.name).cyan());
+            // Get detailed git status for each repository
+            match get_git_status(&repo.path).await {
+                Ok(status) => {
+                    if status.clean {
+                        total_clean += 1;
+                    } else {
+                        total_dirty += 1;
+                    }
+
+                    // Format the detailed status line similar to the original
+                    let mut status_parts = Vec::new();
+
+                    // Repository name
+                    let name_part = format!("  {}", style(&repo.name).cyan().bold());
+
+                    // Branch information with ahead/behind indicators
+                    if let Some(ref branch) = status.branch {
+                        let branch_display = if status.ahead > 0 || status.behind > 0 {
+                            format!("{} [↑{} ↓{}]", branch, status.ahead, status.behind)
+                        } else {
+                            branch.to_string()
+                        };
+                        status_parts.push(format!("on {}", style(branch_display).yellow()));
+                    }
+
+                    // Status indicators
+                    let mut indicators = Vec::new();
+                    if status.clean {
+                        indicators.push(style("✓").green().to_string());
+                    } else {
+                        if status.staged > 0 {
+                            indicators.push(format!("{}S", style(status.staged).green()));
+                        }
+                        if status.unstaged > 0 {
+                            indicators.push(format!("{}M", style(status.unstaged).red()));
+                        }
+                        if status.untracked > 0 {
+                            indicators.push(format!("{}?", style(status.untracked).yellow()));
+                        }
+                    }
+
+                    if !indicators.is_empty() {
+                        status_parts.push(format!("[{}]", indicators.join(" ")));
+                    }
+
+                    // Print the complete status line
+                    if status_parts.is_empty() {
+                        println!("{}", name_part);
+                    } else {
+                        println!("{} {}", name_part, status_parts.join(" "));
+                    }
+                }
+                Err(e) => {
+                    // Handle repositories that can't be analyzed (e.g., not git repos, permission issues)
+                    println!(
+                        "  {} {} {}",
+                        style("⚠").yellow(),
+                        style(&repo.name).cyan().bold(),
+                        style(format!("({})", e)).dim()
+                    );
+                }
+            }
         }
 
         println!();
     }
+
+    // Summary
+    println!(
+        "{} {} clean, {} with changes",
+        style("📊").blue(),
+        style(total_clean).green(),
+        style(total_dirty).red()
+    );
 }
 
 #[cfg(test)]
@@ -289,9 +355,9 @@ mod tests {
         render_workspace_analysis(&analysis, &options);
     }
 
-    #[test]
-    fn test_status_summary_with_empty_repos() {
+    #[tokio::test]
+    async fn test_status_summary_with_empty_repos() {
         let analysis = WorkspaceAnalysis::new();
-        render_status_summary(&analysis);
+        render_status_summary(&analysis).await;
     }
 }

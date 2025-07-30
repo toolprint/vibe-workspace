@@ -372,6 +372,7 @@ mod tests {
                     default_template: "default".to_string(),
                 }),
             },
+            preferences: None,
         }
     }
 }

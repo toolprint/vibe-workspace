@@ -4,7 +4,8 @@ use dialoguer::{theme::ColorfulTheme, Select};
 use inquire::Text;
 
 use super::provider::{ProviderFactory, SearchProvider};
-use super::{CloneCommand, GitConfig, Repository, SearchQuery};
+use super::{GitConfig, Repository, SearchQuery};
+use crate::ui::workflows::{execute_workflow, CloneAndOpenWorkflow};
 use crate::workspace::manager::WorkspaceManager;
 
 pub struct SearchEngine {
@@ -61,6 +62,14 @@ impl SearchEngine {
 pub struct SearchCommand;
 
 impl SearchCommand {
+    /// Execute search with workflow integration for seamless user experience
+    pub async fn execute_with_workflow(
+        workspace_manager: &mut WorkspaceManager,
+        config: &GitConfig,
+    ) -> Result<()> {
+        Self::execute_interactive(workspace_manager, config).await
+    }
+
     pub async fn execute_interactive(
         workspace_manager: &mut WorkspaceManager,
         config: &GitConfig,
@@ -114,11 +123,16 @@ impl SearchCommand {
         );
 
         // Display and select repository
-        let selected_repo = Self::display_interactive_results(&results)?;
+        let selected_repo = Self::display_interactive_results(&results, workspace_manager)?;
 
         if let Some(repo) = selected_repo {
-            // Clone the selected repository
-            CloneCommand::clone_from_search_result(repo, workspace_manager, config).await?;
+            // Use workflow system for seamless clone + configure + open experience
+            let workflow = CloneAndOpenWorkflow {
+                url: repo.url.clone(),
+                app: None, // Let user choose during workflow
+            };
+
+            execute_workflow(Box::new(workflow), workspace_manager).await?;
         } else {
             println!("{} No repository selected", style("ℹ️").blue());
         }
@@ -126,7 +140,10 @@ impl SearchCommand {
         Ok(())
     }
 
-    fn display_interactive_results(results: &[Repository]) -> Result<Option<Repository>> {
+    fn display_interactive_results(
+        results: &[Repository],
+        workspace_manager: &WorkspaceManager,
+    ) -> Result<Option<Repository>> {
         let items: Vec<String> = results
             .iter()
             .map(|repo| {
@@ -167,6 +184,7 @@ impl SearchCommand {
             .with_prompt("Select repository to clone (ESC to cancel)")
             .items(&items)
             .default(0)
+            .max_length(workspace_manager.get_git_search_results_page_size())
             .interact_opt()?;
 
         Ok(selection.map(|i| results[i].clone()))
@@ -178,5 +196,141 @@ impl SearchCommand {
         } else {
             count.to_string()
         }
+    }
+
+    /// Enhanced search with advanced options and workflow integration
+    pub async fn execute_advanced_search(
+        workspace_manager: &mut WorkspaceManager,
+        config: &GitConfig,
+        query: Option<String>,
+        language: Option<String>,
+        organization: Option<String>,
+    ) -> Result<()> {
+        println!(
+            "\n{} {} {}",
+            style("🔍").blue(),
+            style("Advanced GitHub Search").cyan().bold(),
+            style("- Find repositories with filters").dim()
+        );
+
+        // Get search query if not provided
+        let query = if let Some(q) = query {
+            q
+        } else {
+            Text::new("\nSearch GitHub repositories:")
+                .with_placeholder("e.g., rust web framework")
+                .prompt()?
+        };
+
+        if query.trim().is_empty() {
+            println!("{} Search cancelled", style("❌").red());
+            return Ok(());
+        }
+
+        println!("\n{} Searching repositories...", style("🔍").blue());
+
+        let search_query = SearchQuery {
+            keywords: query.split_whitespace().map(|s| s.to_string()).collect(),
+            tags: vec![],
+            language,
+            organization,
+            limit: Some(30), // More results for advanced search
+            sort: Default::default(),
+        };
+
+        let engine = SearchEngine::new(config)?;
+        let results = engine.search(&search_query).await?;
+
+        if results.is_empty() {
+            println!(
+                "{} No repositories found for '{}'",
+                style("❌").red(),
+                query
+            );
+            return Ok(());
+        }
+
+        println!(
+            "\n{} {} {} {}",
+            style("📦").green(),
+            style("Found").green().bold(),
+            style(format!("{} repositories", results.len())).dim(),
+            style(format!("(sorted by: {})", search_query.sort.display_name())).dim()
+        );
+
+        // Display enhanced results with workflow integration
+        let selected_repo = Self::display_enhanced_results(&results, workspace_manager)?;
+
+        if let Some(repo) = selected_repo {
+            // Use workflow system for complete clone + configure + open experience
+            let workflow = CloneAndOpenWorkflow {
+                url: repo.url.clone(),
+                app: None, // User will be prompted to configure during workflow
+            };
+
+            execute_workflow(Box::new(workflow), workspace_manager).await?;
+        } else {
+            println!("{} No repository selected", style("ℹ️").blue());
+        }
+
+        Ok(())
+    }
+
+    /// Enhanced results display with more repository information
+    fn display_enhanced_results(
+        results: &[Repository],
+        workspace_manager: &WorkspaceManager,
+    ) -> Result<Option<Repository>> {
+        let items: Vec<String> = results
+            .iter()
+            .enumerate()
+            .map(|(i, repo)| {
+                let stars = if repo.stars > 0 {
+                    format!("⭐ {} ", Self::format_stars(repo.stars))
+                } else {
+                    "".to_string()
+                };
+
+                let lang = if let Some(language) = &repo.language {
+                    format!(" [{}]", language)
+                } else {
+                    "".to_string()
+                };
+
+                let license = if let Some(license_key) = &repo.license {
+                    format!(" [{}]", license_key.to_uppercase())
+                } else {
+                    "".to_string()
+                };
+
+                let desc = repo.description.as_deref().unwrap_or("No description");
+                let truncated_desc = if desc.chars().count() > 50 {
+                    let truncated: String = desc.chars().take(50).collect();
+                    format!("{}...", truncated)
+                } else {
+                    desc.to_string()
+                };
+
+                // Enhanced format with index numbers for quick selection
+                format!(
+                    "{:2}. {}{}{}{} - {}",
+                    i + 1,
+                    stars,
+                    repo.full_name,
+                    lang,
+                    license,
+                    truncated_desc
+                )
+            })
+            .collect();
+
+        let selection = Select::with_theme(&ColorfulTheme::default())
+            .with_prompt("Select repository to clone (ESC to cancel)")
+            .items(&items)
+            .default(0)
+            .max_length(workspace_manager.get_git_search_results_page_size())
+            .interact_opt()?;
+
+        Ok(selection.map(|i| results[i].clone()))
     }
 }

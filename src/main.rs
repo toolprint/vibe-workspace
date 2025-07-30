@@ -5,13 +5,14 @@ use std::path::PathBuf;
 use tracing::Level;
 
 mod apps;
+mod cache;
 mod git;
 mod ui;
 mod uri;
 mod utils;
 mod workspace;
 
-use ui::prompts;
+use ui::{prompts, state::VibeState};
 use workspace::WorkspaceManager;
 
 #[derive(Parser)]
@@ -56,8 +57,8 @@ enum Commands {
         command: AppsCommands,
     },
 
-    /// Interactive workspace management
-    Interactive,
+    /// Interactive menu system
+    Menu,
 
     /// Manage workspace configuration
     Config {
@@ -83,6 +84,42 @@ enum Commands {
         /// Disable iTermocil for iTerm2 (use Dynamic Profiles instead)
         #[arg(long)]
         no_itermocil: bool,
+    },
+
+    /// Quick launch recent repository or specific repository
+    Launch {
+        /// Repository name or number (1-9 for recent repos)
+        #[arg(value_name = "REPO")]
+        repo: Option<String>,
+
+        /// App to open with (overrides default/last used)
+        #[arg(short, long)]
+        app: Option<String>,
+    },
+
+    /// Clone, configure, and open a repository in one command
+    Go {
+        /// Repository URL or GitHub shorthand (owner/repo)
+        url: String,
+
+        /// App to open with after cloning
+        #[arg(short, long)]
+        app: Option<String>,
+
+        /// Skip app configuration
+        #[arg(long)]
+        no_configure: bool,
+
+        /// Skip opening after clone
+        #[arg(long)]
+        no_open: bool,
+    },
+
+    /// Run first-time setup wizard
+    Setup {
+        /// Skip the setup wizard
+        #[arg(long)]
+        skip: bool,
     },
 }
 
@@ -230,6 +267,17 @@ enum ConfigCommands {
         /// Custom backup name (default: timestamp)
         #[arg(short, long)]
         name: Option<String>,
+    },
+
+    /// Restore configuration from backup archive
+    Restore {
+        /// Backup file to restore from
+        #[arg(short, long)]
+        backup: Option<PathBuf>,
+
+        /// Skip confirmation prompts
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -381,8 +429,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         None => {
-            // No command provided, start interactive mode
-            prompts::run_interactive_mode(&mut workspace_manager).await?;
+            // No command provided, start menu mode
+            prompts::run_menu_mode(&mut workspace_manager).await?;
         }
         Some(command) => match command {
             Commands::Init { name, root } => {
@@ -556,8 +604,8 @@ async fn main() -> Result<()> {
                 }
             },
 
-            Commands::Interactive => {
-                prompts::run_interactive_mode(&mut workspace_manager).await?;
+            Commands::Menu => {
+                prompts::run_menu_mode(&mut workspace_manager).await?;
             }
 
             Commands::Config { command } => match command {
@@ -602,6 +650,10 @@ async fn main() -> Result<()> {
                         style("✓").green().bold(),
                         style(backup_path.display()).cyan()
                     );
+                }
+
+                ConfigCommands::Restore { backup, force } => {
+                    workspace_manager.restore_from_backup(backup, force).await?;
                 }
             },
 
@@ -721,7 +773,7 @@ async fn main() -> Result<()> {
                     install,
                 } => {
                     let git_config = git::GitConfig::default();
-                    git::CloneCommand::execute(
+                    let _cloned_path = git::CloneCommand::execute(
                         url,
                         path,
                         open,
@@ -785,6 +837,136 @@ async fn main() -> Result<()> {
                             );
                         }
                     }
+                }
+            }
+
+            Commands::Launch { repo, app } => {
+                // Load state to get recent repos
+                let mut state = VibeState::load().unwrap_or_default();
+
+                let repo_to_open = if let Some(repo_name) = repo {
+                    // Check if it's a number (1-9) for recent repos
+                    if let Ok(num) = repo_name.parse::<usize>() {
+                        if num >= 1 && num <= 9 {
+                            let recent_repos = state.get_recent_repos(15);
+                            if num <= recent_repos.len() {
+                                recent_repos[num - 1].repo_id.clone()
+                            } else {
+                                anyhow::bail!("No recent repository at position {}", num);
+                            }
+                        } else {
+                            repo_name
+                        }
+                    } else {
+                        repo_name
+                    }
+                } else {
+                    // No repo specified, open the most recent one
+                    let recent_repos = state.get_recent_repos(1);
+                    if recent_repos.is_empty() {
+                        anyhow::bail!(
+                            "No recent repositories found. Use 'vibe' to browse repositories."
+                        );
+                    }
+                    recent_repos[0].repo_id.clone()
+                };
+
+                // Get the repository info
+                let repo_info = workspace_manager
+                    .get_repository(&repo_to_open)
+                    .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_to_open))?;
+
+                // Determine which app to use
+                let app_to_use = if let Some(app_name) = app {
+                    app_name
+                } else if let Some(last_app) = state.get_last_app(&repo_to_open) {
+                    last_app.clone()
+                } else {
+                    // Get configured apps and use first one
+                    let apps = workspace_manager.list_apps_for_repo(&repo_to_open)?;
+                    if apps.is_empty() {
+                        anyhow::bail!("No apps configured for repository '{}'", repo_to_open);
+                    }
+                    apps[0].0.clone()
+                };
+
+                // Open the repository
+                workspace_manager
+                    .open_repo_with_app(&repo_to_open, &app_to_use)
+                    .await?;
+
+                // Update state with this access
+                state.add_recent_repo(
+                    repo_to_open.clone(),
+                    repo_info.path.clone(),
+                    Some(app_to_use.clone()),
+                );
+                state.save()?;
+
+                println!(
+                    "{} Launched {} with {}",
+                    style("🚀").green(),
+                    style(&repo_to_open).cyan().bold(),
+                    style(&app_to_use).blue()
+                );
+            }
+
+            Commands::Go {
+                url,
+                app,
+                no_configure,
+                no_open,
+            } => {
+                use ui::workflows::{execute_workflow, CloneAndOpenWorkflow};
+
+                // Use workflow system if not skipping steps
+                if !no_configure || !no_open {
+                    let workflow = Box::new(CloneAndOpenWorkflow {
+                        url: url.clone(),
+                        app: app.clone(),
+                    });
+
+                    execute_workflow(workflow, &mut workspace_manager).await?;
+                } else {
+                    // Just clone without workflow
+                    let git_config = git::GitConfig::default();
+                    let _cloned_path = git::CloneCommand::execute(
+                        url,
+                        None,
+                        false,
+                        false,
+                        &mut workspace_manager,
+                        &git_config,
+                    )
+                    .await?;
+
+                    println!(
+                        "{} Repository cloned successfully!",
+                        style("✓").green().bold()
+                    );
+                }
+            }
+
+            Commands::Setup { skip } => {
+                if skip {
+                    let mut state = VibeState::load().unwrap_or_default();
+                    state.complete_setup_wizard();
+                    state.save()?;
+                    println!("{} Setup wizard skipped", style("ℹ️").blue());
+                } else {
+                    use ui::workflows::{execute_workflow, SetupWorkspaceWorkflow};
+
+                    // Run setup workflow
+                    let workflow = Box::new(SetupWorkspaceWorkflow {
+                        auto_discover: true,
+                    });
+
+                    execute_workflow(workflow, &mut workspace_manager).await?;
+
+                    // Mark setup as complete
+                    let mut state = VibeState::load().unwrap_or_default();
+                    state.complete_setup_wizard();
+                    state.save()?;
                 }
             }
         },

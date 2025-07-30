@@ -162,6 +162,7 @@ mod tests {
                 }),
                 wezterm: None,
             },
+            preferences: None,
         }
     }
 }

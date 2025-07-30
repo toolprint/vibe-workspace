@@ -109,14 +109,22 @@ pub async fn open_with_iterm2_options(
     let profile_path = iterm2_integration.config_dir.join(&profile_name);
 
     // Create config directory if it doesn't exist
-    fs::create_dir_all(&iterm2_integration.config_dir)
-        .await
-        .with_context(|| {
+    let config_dir = &iterm2_integration.config_dir;
+    if let Some(parent) = profile_path.parent() {
+        fs::create_dir_all(parent).await.with_context(|| {
             format!(
                 "Failed to create iTerm2 config directory: {}",
-                iterm2_integration.config_dir.display()
+                parent.display()
             )
         })?;
+    } else {
+        fs::create_dir_all(config_dir).await.with_context(|| {
+            format!(
+                "Failed to create iTerm2 config directory: {}",
+                config_dir.display()
+            )
+        })?;
+    }
 
     // Write the profile
     fs::write(&profile_path, profile_content)
@@ -290,18 +298,24 @@ async fn create_and_launch_itermocil_layout(
         }
     };
 
-    // Create the iTermocil configuration directory if it doesn't exist
-    let itermocil_dir = get_itermocil_config_dir();
-    fs::create_dir_all(&itermocil_dir).await.with_context(|| {
-        format!(
-            "Failed to create iTermocil directory: {}",
-            itermocil_dir.display()
-        )
-    })?;
-
     // Generate a unique layout file name
     let layout_name = format!("vibe-{}-{}", config.workspace.name, repo.name);
+    let itermocil_dir = get_itermocil_config_dir();
     let layout_path = itermocil_dir.join(format!("{layout_name}.yml"));
+
+    // Ensure the parent directory of the layout file exists
+    if let Some(parent) = layout_path.parent() {
+        fs::create_dir_all(parent).await.with_context(|| {
+            format!("Failed to create iTermocil directory: {}", parent.display())
+        })?;
+    } else {
+        fs::create_dir_all(&itermocil_dir).await.with_context(|| {
+            format!(
+                "Failed to create iTermocil directory: {}",
+                itermocil_dir.display()
+            )
+        })?;
+    }
 
     // Write the layout file
     fs::write(&layout_path, yaml_content)
@@ -388,6 +402,7 @@ mod tests {
                 }),
                 wezterm: None,
             },
+            preferences: None,
         }
     }
 }

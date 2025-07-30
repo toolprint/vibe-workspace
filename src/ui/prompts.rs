@@ -1,43 +1,220 @@
 use anyhow::{Context, Result};
 use console;
-use inquire::{Confirm, MultiSelect, Select, Text};
+use console::style;
+use inquire::{Confirm, InquireError, MultiSelect, Select, Text};
 use std::path::PathBuf;
 
 use crate::git::{GitConfig, SearchCommand};
+use crate::ui::smart_menu::{SmartActionType, SmartMenu};
+use crate::ui::state::VibeState;
 use crate::workspace::WorkspaceManager;
 
-pub async fn run_interactive_mode(workspace_manager: &mut WorkspaceManager) -> Result<()> {
-    println!("🚀 Welcome to Workspace CLI Interactive Mode!");
-    println!();
+/// Handle prompt results to distinguish between ESC key navigation and fatal errors
+/// Returns:
+/// - Ok(Some(value)) for successful prompts
+/// - Ok(None) for ESC key cancellation (navigation signal)
+/// - Err(error) for other fatal errors
+fn handle_prompt_result<T>(result: Result<T, InquireError>) -> Result<Option<T>> {
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(InquireError::OperationCanceled) => {
+            // ESC key pressed - treat as navigation signal, not error
+            Ok(None)
+        }
+        Err(error) => {
+            // Other errors should be propagated
+            Err(anyhow::Error::from(error))
+        }
+    }
+}
+
+// Navigation helper utilities for consistent menu structure
+const NAVIGATION_SEPARATOR: &str = "────────────────────";
+
+/// Create a visual separator for navigation options
+fn create_navigation_separator() -> String {
+    format!("{}", style(NAVIGATION_SEPARATOR).dim())
+}
+
+/// Format navigation option with brackets
+fn format_navigation_option(text: &str) -> String {
+    format!("[{}]", text)
+}
+
+/// Create a menu with standardized navigation options
+fn create_menu_with_navigation(options: Vec<String>, is_main_menu: bool) -> Vec<String> {
+    let mut menu_items = options;
+
+    // Add separator
+    menu_items.push(create_navigation_separator());
+
+    // Add appropriate navigation option
+    if is_main_menu {
+        menu_items.push(format_navigation_option("Exit"));
+    } else {
+        menu_items.push(format_navigation_option("Back"));
+    }
+
+    menu_items
+}
+
+/// Check if selection is a navigation option
+fn is_navigation_option(selection: &str) -> bool {
+    selection.starts_with('[') && selection.ends_with(']')
+}
+
+/// Extract navigation action from bracketed option
+fn get_navigation_action(selection: &str) -> Option<&str> {
+    if is_navigation_option(selection) {
+        selection
+            .strip_prefix('[')
+            .and_then(|s| s.strip_suffix(']'))
+    } else {
+        None
+    }
+}
+
+pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    // Check for first-time setup
+    let smart_menu = SmartMenu::new(workspace_manager).await?;
+    if smart_menu.should_show_setup_wizard() {
+        println!("{}", style("🎉 Welcome to Vibe Workspace!").cyan().bold());
+        println!("It looks like this is your first time using Vibe.\n");
+
+        if prompt_yes_no("Would you like to run the setup wizard?", true)? {
+            run_setup_wizard(workspace_manager).await?;
+
+            // Update state to mark wizard as complete
+            let mut state = VibeState::load().unwrap_or_default();
+            state.complete_setup_wizard();
+            state.save()?;
+        }
+        println!();
+    } else {
+        println!("🚀 Welcome to Vibe Workspace!");
+        println!();
+    }
 
     loop {
-        let action = Select::new(
-            "What would you like to do?",
-            vec![
-                "🚀 Launch app",
-                "📁 Manage repos",
-                "⚙️ Configure vibes",
-                "Exit",
-            ],
-        )
-        .with_starting_cursor(0) // Default to "Launch app"
-        .prompt()?;
+        // Reload smart menu to get fresh state
+        let smart_menu = SmartMenu::new(workspace_manager).await?;
 
-        match action {
-            "🚀 Launch app" => {
-                open_repository_with_filter(workspace_manager).await?;
+        // Build dynamic menu options
+        let mut menu_options = Vec::new();
+
+        // Add quick launch items
+        let quick_items = smart_menu.get_quick_launch_items();
+        if !quick_items.is_empty() {
+            menu_options.push(format!("{}", style("🏃 ── Quick Launch ──").dim()));
+
+            for item in &quick_items {
+                let label = format!(
+                    "{}. {} {} {}",
+                    style(item.number).cyan().bold(),
+                    style(&item.repo_name).green(),
+                    style(format!("({})", item.last_accessed)).dim(),
+                    if let Some(app) = &item.last_app {
+                        format!("→ {}", style(app).blue())
+                    } else {
+                        "".to_string()
+                    }
+                );
+                menu_options.push(label);
             }
-            "📁 Manage repos" => {
-                manage_repos_interactive(workspace_manager).await?;
-            }
-            "⚙️ Configure vibes" => {
-                configure_vibes_interactive(workspace_manager).await?;
-            }
-            "Exit" => {
+
+            menu_options.push(format!("{}", style("🧠 ── Smart Actions ──").dim()));
+        }
+
+        // Add smart actions
+        let smart_actions = smart_menu.get_smart_actions();
+        for action in &smart_actions {
+            menu_options.push(action.label.clone());
+        }
+
+        // Add standard menu items
+        menu_options.push(format!("{}", style("🏠 ── Main Menu ──").dim()));
+        let mut standard_options = vec![
+            "🚀 Launch app".to_string(),
+            "🔀 Manage repos".to_string(),
+            "⚙️ Settings".to_string(),
+        ];
+        menu_options.append(&mut standard_options);
+
+        // Apply navigation formatting (main menu gets [Exit])
+        menu_options = create_menu_with_navigation(menu_options, true);
+
+        // Create the select prompt
+        let selection_result = Select::new("What would you like to do?", menu_options)
+            .with_starting_cursor(if quick_items.is_empty() { 0 } else { 1 })
+            .with_page_size(workspace_manager.get_main_menu_page_size())
+            .with_help_message("Use arrow keys to navigate • ESC to exit")
+            .prompt();
+
+        let selection = match handle_prompt_result(selection_result)? {
+            Some(selection) => selection,
+            None => {
+                // ESC pressed in main menu - exit
                 println!("👋 Goodbye!");
                 break;
             }
-            _ => unreachable!(),
+        };
+
+        // Handle number key shortcuts (1-9) for quick launch
+        if let Some(digit) = selection.chars().next().and_then(|c| c.to_digit(10)) {
+            if digit >= 1 && digit <= 9 {
+                let index = (digit - 1) as usize;
+                if index < quick_items.len() {
+                    let item = &quick_items[index];
+                    launch_repository(workspace_manager, &item.repo_name, item.last_app.as_deref())
+                        .await?;
+                    continue;
+                }
+            }
+        }
+
+        // Handle smart actions
+        let mut handled = false;
+        for action in &smart_actions {
+            if selection == action.label {
+                handle_smart_action(workspace_manager, &action.action_type).await?;
+                handled = true;
+                break;
+            }
+        }
+
+        if handled {
+            println!();
+            continue;
+        }
+
+        // Handle navigation options first
+        if let Some(action) = get_navigation_action(&selection) {
+            match action {
+                "Exit" => {
+                    println!("👋 Goodbye!");
+                    break;
+                }
+                _ => continue,
+            }
+        }
+
+        // Handle standard menu items
+        match selection.as_str() {
+            "🚀 Launch app" => {
+                launch_repository_with_cache(workspace_manager).await?;
+            }
+            "🔀 Manage repos" => {
+                manage_repos_interactive(workspace_manager).await?;
+            }
+            "⚙️ Settings" => {
+                configure_vibes_interactive(workspace_manager).await?;
+            }
+            _ => {
+                // Skip section headers and separators
+                if selection.contains("──") || selection == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
         }
 
         println!();
@@ -54,14 +231,30 @@ async fn search_and_clone_interactive(workspace_manager: &mut WorkspaceManager) 
 
 async fn show_status_interactive(workspace_manager: &WorkspaceManager) -> Result<()> {
     let options = vec![
-        "All repositories",
-        "Only dirty repositories",
-        "Select group",
+        "All repositories".to_string(),
+        "Only dirty repositories".to_string(),
+        "Select group".to_string(),
     ];
 
-    let choice = Select::new("Show status for:", options).prompt()?;
+    let menu_options = create_menu_with_navigation(options, false);
+    let choice_result = Select::new("Show status for:", menu_options)
+        .with_help_message("Choose status display options • ESC to go back")
+        .prompt();
 
-    match choice {
+    let choice = match handle_prompt_result(choice_result)? {
+        Some(choice) => choice,
+        None => {
+            // ESC pressed - go back
+            return Ok(());
+        }
+    };
+
+    // Handle navigation
+    if choice == format_navigation_option("Back") {
+        return Ok(());
+    }
+
+    match choice.as_str() {
         "All repositories" => {
             workspace_manager.show_status(false, "table", None).await?;
         }
@@ -79,17 +272,61 @@ async fn show_status_interactive(workspace_manager: &WorkspaceManager) -> Result
 }
 
 async fn discover_repositories_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
-    let path_input = Text::new("Directory to scan:")
-        .with_default(&std::env::current_dir()?.display().to_string())
-        .prompt()?;
+    // First, show options menu
+    let options = vec![
+        "🔍 Scan current workspace".to_string(),
+        "📁 Choose directory to scan".to_string(),
+    ];
 
-    let path = PathBuf::from(path_input);
+    let menu_options = create_menu_with_navigation(options, false);
+    let choice_result = Select::new("Repository Discovery:", menu_options)
+        .with_help_message("Choose discovery method • ESC to go back")
+        .prompt();
 
-    let depth = Text::new("Maximum depth:")
+    let choice = match handle_prompt_result(choice_result)? {
+        Some(choice) => choice,
+        None => {
+            // ESC pressed - go back
+            return Ok(());
+        }
+    };
+
+    // Handle navigation
+    if choice == format_navigation_option("Back") {
+        return Ok(());
+    }
+
+    let path = match choice.as_str() {
+        "🔍 Scan current workspace" => workspace_manager.get_workspace_root().clone(),
+        "📁 Choose directory to scan" => {
+            let path_result = Text::new("Directory to scan:")
+                .with_default(&std::env::current_dir()?.display().to_string())
+                .with_help_message("Enter directory path • ESC to go back")
+                .prompt();
+
+            match handle_prompt_result(path_result)? {
+                Some(path_input) => PathBuf::from(path_input),
+                None => {
+                    // ESC pressed - go back
+                    return Ok(());
+                }
+            }
+        }
+        _ => return Ok(()),
+    };
+
+    let depth_result = Text::new("Maximum depth:")
         .with_default("3")
-        .prompt()?
-        .parse::<usize>()
-        .unwrap_or(3);
+        .with_help_message("Enter depth (1-10) • ESC to go back")
+        .prompt();
+
+    let depth = match handle_prompt_result(depth_result)? {
+        Some(depth_input) => depth_input.parse::<usize>().unwrap_or(3),
+        None => {
+            // ESC pressed - go back
+            return Ok(());
+        }
+    };
 
     println!("🔍 Discovering repositories...");
     let repos = workspace_manager
@@ -121,13 +358,59 @@ async fn discover_repositories_interactive(workspace_manager: &mut WorkspaceMana
 }
 
 async fn sync_repositories_interactive(workspace_manager: &WorkspaceManager) -> Result<()> {
-    let fetch_only = Confirm::new("Fetch only (don't pull)?")
-        .with_default(false)
-        .prompt()?;
+    // Show sync options menu
+    let options = vec![
+        "🔄 Full sync (fetch + pull)".to_string(),
+        "⬇️ Fetch only".to_string(),
+        "🗑️ Sync with prune".to_string(),
+        "⚙️ Custom options".to_string(),
+    ];
 
-    let prune = Confirm::new("Prune remote tracking branches?")
-        .with_default(false)
-        .prompt()?;
+    let menu_options = create_menu_with_navigation(options, false);
+    let choice_result = Select::new("Sync Options:", menu_options)
+        .with_help_message("Choose synchronization method • ESC to go back")
+        .prompt();
+
+    let choice = match handle_prompt_result(choice_result)? {
+        Some(choice) => choice,
+        None => {
+            // ESC pressed - go back
+            return Ok(());
+        }
+    };
+
+    // Handle navigation
+    if choice == format_navigation_option("Back") {
+        return Ok(());
+    }
+
+    let (fetch_only, prune) = match choice.as_str() {
+        "🔄 Full sync (fetch + pull)" => (false, false),
+        "⬇️ Fetch only" => (true, false),
+        "🗑️ Sync with prune" => (false, true),
+        "⚙️ Custom options" => {
+            let fetch_only_result = Confirm::new("Fetch only (don't pull)?")
+                .with_default(false)
+                .with_help_message("ESC to go back")
+                .prompt();
+            let fetch_only = match handle_prompt_result(fetch_only_result)? {
+                Some(value) => value,
+                None => return Ok(()),
+            };
+
+            let prune_result = Confirm::new("Prune remote tracking branches?")
+                .with_default(false)
+                .with_help_message("ESC to go back")
+                .prompt();
+            let prune = match handle_prompt_result(prune_result)? {
+                Some(value) => value,
+                None => return Ok(()),
+            };
+
+            (fetch_only, prune)
+        }
+        _ => return Ok(()),
+    };
 
     workspace_manager
         .sync_repositories(fetch_only, prune, false, None)
@@ -137,21 +420,86 @@ async fn sync_repositories_interactive(workspace_manager: &WorkspaceManager) -> 
 }
 
 async fn execute_command_interactive(workspace_manager: &WorkspaceManager) -> Result<()> {
-    let command = Text::new("Git command to execute:")
-        .with_help_message(
-            "Enter git command without 'git' prefix (e.g., 'status', 'pull origin main')",
-        )
-        .prompt()?;
+    // Show command execution options
+    let options = vec![
+        "📋 Common commands".to_string(),
+        "⚡ Custom git command".to_string(),
+    ];
 
-    let git_command = if command.starts_with("git ") {
-        command
-    } else {
-        format!("git {command}")
+    let menu_options = create_menu_with_navigation(options, false);
+    let choice_result = Select::new("Command Execution:", menu_options)
+        .with_help_message("Choose execution method • ESC to go back")
+        .prompt();
+
+    let choice = match handle_prompt_result(choice_result)? {
+        Some(choice) => choice,
+        None => {
+            // ESC pressed - go back
+            return Ok(());
+        }
     };
 
-    let parallel = Confirm::new("Execute in parallel?")
+    // Handle navigation
+    if choice == format_navigation_option("Back") {
+        return Ok(());
+    }
+
+    let git_command = match choice.as_str() {
+        "📋 Common commands" => {
+            let commands = vec![
+                "status".to_string(),
+                "pull".to_string(),
+                "push".to_string(),
+                "fetch".to_string(),
+                "log --oneline -10".to_string(),
+            ];
+
+            let cmd_menu = create_menu_with_navigation(commands, false);
+            let selected_result = Select::new("Select command:", cmd_menu)
+                .with_help_message("Choose a common git command • ESC to go back")
+                .prompt();
+
+            let selected = match handle_prompt_result(selected_result)? {
+                Some(selected) => selected,
+                None => return Ok(()),
+            };
+
+            if selected == format_navigation_option("Back") {
+                return Ok(());
+            }
+
+            format!("git {}", selected)
+        }
+        "⚡ Custom git command" => {
+            let command_result = Text::new("Git command to execute:")
+                .with_help_message(
+                    "Enter git command without 'git' prefix (e.g., 'status', 'pull origin main') • ESC to go back",
+                )
+                .prompt();
+
+            let command = match handle_prompt_result(command_result)? {
+                Some(command) => command,
+                None => return Ok(()),
+            };
+
+            if command.starts_with("git ") {
+                command
+            } else {
+                format!("git {command}")
+            }
+        }
+        _ => return Ok(()),
+    };
+
+    let parallel_result = Confirm::new("Execute in parallel?")
         .with_default(true)
-        .prompt()?;
+        .with_help_message("ESC to go back")
+        .prompt();
+
+    let parallel = match handle_prompt_result(parallel_result)? {
+        Some(parallel) => parallel,
+        None => return Ok(()),
+    };
 
     workspace_manager
         .execute_command(&git_command, None, None, parallel)
@@ -164,14 +512,14 @@ async fn manage_groups_interactive(_workspace_manager: &WorkspaceManager) -> Res
     println!("🚧 Group management coming soon!");
 
     let actions = vec![
-        "Create new group",
-        "Add repositories to group",
-        "Remove repositories from group",
-        "Delete group",
-        "Back to main menu",
+        "Create new group".to_string(),
+        "Add repositories to group".to_string(),
+        "Remove repositories from group".to_string(),
+        "Delete group".to_string(),
     ];
 
-    let _action = Select::new("Group management:", actions).prompt()?;
+    let menu_options = create_menu_with_navigation(actions, false);
+    let _action = Select::new("Group management:", menu_options).prompt()?;
 
     // TODO: Implement group management functionality
     println!("This feature will be implemented in a future release");
@@ -404,19 +752,43 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
 async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> Result<()> {
     loop {
         let actions = vec![
-            "List templates",
-            "Create template",
-            "Delete template",
-            "View template content",
-            "Back to main menu",
+            "List templates".to_string(),
+            "Create template".to_string(),
+            "Delete template".to_string(),
+            "View template content".to_string(),
         ];
 
-        let action = Select::new("Template management:", actions).prompt()?;
+        let menu_options = create_menu_with_navigation(actions, false);
+        let action_result = Select::new("Template management:", menu_options)
+            .with_help_message("Choose template action • ESC to go back")
+            .prompt();
 
-        match action {
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        match action.as_str() {
             "List templates" => {
                 let apps = vec!["warp", "iterm2", "vscode", "wezterm"];
-                let app = Select::new("Select app:", apps).prompt()?;
+                let app_result = Select::new("Select app:", apps)
+                    .with_help_message("Choose app • ESC to go back")
+                    .prompt();
+                let app = match handle_prompt_result(app_result)? {
+                    Some(app) => app,
+                    None => continue,
+                };
 
                 let templates = workspace_manager.list_templates(app).await?;
 
@@ -530,9 +902,12 @@ async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> R
                 println!("\n");
             }
 
-            "Back to main menu" => break,
-
-            _ => unreachable!(),
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
         }
 
         println!();
@@ -565,6 +940,7 @@ async fn open_repository_with_filter(workspace_manager: &WorkspaceManager) -> Re
 
     let selected_display = Select::new("Repository:", all_repos)
         .with_help_message("Use arrow keys to navigate, type to filter")
+        .with_page_size(workspace_manager.get_repository_list_page_size())
         .prompt()?;
 
     // Find the repository that matches the selected display string
@@ -610,21 +986,55 @@ async fn open_repository_with_filter(workspace_manager: &WorkspaceManager) -> Re
     Ok(())
 }
 
+/// Fast repository launcher using cached data
+async fn launch_repository_with_cache(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    // Get the quick launcher with cache system
+    let launcher = workspace_manager.get_quick_launcher().await?;
+
+    // Ensure cache is up to date
+    launcher.refresh_cache(workspace_manager).await?;
+
+    // Launch the repository selection UI
+    launcher.launch(workspace_manager).await?;
+
+    Ok(())
+}
+
 async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
     loop {
         let actions = vec![
-            "Show repository status",
-            "Search & clone from GitHub",
-            "Discover new repositories",
-            "Sync repositories",
-            "Execute command on repositories",
-            "Manage groups",
-            "Back to main menu",
+            "Show repository status".to_string(),
+            "Search & clone from GitHub".to_string(),
+            "Discover new repositories".to_string(),
+            "Sync repositories".to_string(),
+            "Execute command on repositories".to_string(),
+            "Manage groups".to_string(),
         ];
 
-        let action = Select::new("📁 Repository Management:", actions).prompt()?;
+        let menu_options = create_menu_with_navigation(actions, false);
 
-        match action {
+        let action_result = Select::new("📁 Repository Management:", menu_options)
+            .with_page_size(workspace_manager.get_management_menus_page_size())
+            .with_help_message("Choose repository management action • ESC to go back")
+            .prompt();
+
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        match action.as_str() {
             "Show repository status" => {
                 show_status_interactive(workspace_manager).await?;
             }
@@ -643,10 +1053,12 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
             "Manage groups" => {
                 manage_groups_interactive(workspace_manager).await?;
             }
-            "Back to main menu" => {
-                break;
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
             }
-            _ => unreachable!(),
         }
 
         println!();
@@ -658,16 +1070,37 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
 async fn configure_vibes_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
     loop {
         let actions = vec![
-            "Configure apps for repositories",
-            "Manage app templates",
-            "Factory Reset",
-            "Create Backup",
-            "Back to main menu",
+            "Configure apps for repositories".to_string(),
+            "Manage app templates".to_string(),
+            "Factory Reset".to_string(),
+            "Create Backup".to_string(),
+            "Restore from Backup".to_string(),
         ];
 
-        let action = Select::new("⚙️ Configuration Management:", actions).prompt()?;
+        let menu_options = create_menu_with_navigation(actions, false);
 
-        match action {
+        let action_result = Select::new("⚙️ Configuration Management:", menu_options)
+            .with_page_size(workspace_manager.get_management_menus_page_size())
+            .with_help_message("Choose configuration action • ESC to go back")
+            .prompt();
+
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        match action.as_str() {
             "Configure apps for repositories" => {
                 configure_apps_interactive(workspace_manager).await?;
             }
@@ -680,10 +1113,15 @@ async fn configure_vibes_interactive(workspace_manager: &mut WorkspaceManager) -
             "Create Backup" => {
                 create_backup_interactive(workspace_manager).await?;
             }
-            "Back to main menu" => {
-                break;
+            "Restore from Backup" => {
+                restore_backup_interactive(workspace_manager).await?;
             }
-            _ => unreachable!(),
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
         }
 
         println!();
@@ -812,6 +1250,385 @@ async fn create_backup_interactive(workspace_manager: &WorkspaceManager) -> Resu
             );
         }
     }
+
+    Ok(())
+}
+
+/// Prompt user for yes/no confirmation
+pub fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool> {
+    Confirm::new(prompt)
+        .with_default(default)
+        .prompt()
+        .context("Failed to get user confirmation")
+}
+
+/// Prompt user to select an app
+pub fn prompt_app_selection() -> Result<String> {
+    let apps = vec!["vscode", "warp", "iterm2", "wezterm"];
+    Select::new("Select an app to configure:", apps)
+        .prompt()
+        .map(|s| s.to_string())
+        .context("Failed to select app")
+}
+
+/// Handle a smart action
+async fn handle_smart_action(
+    workspace_manager: &mut WorkspaceManager,
+    action_type: &SmartActionType,
+) -> Result<()> {
+    match action_type {
+        SmartActionType::SetupWorkspace => {
+            run_setup_wizard(workspace_manager).await?;
+        }
+        SmartActionType::DiscoverRepos => {
+            discover_repositories_interactive(workspace_manager).await?;
+        }
+        SmartActionType::ConfigureApps(repos) => {
+            configure_apps_for_repos(workspace_manager, repos).await?;
+        }
+        SmartActionType::InstallApps => {
+            crate::apps::run_interactive_installer().await?;
+        }
+        SmartActionType::CleanupMissing => {
+            cleanup_missing_repos(workspace_manager).await?;
+        }
+        SmartActionType::SyncRepositories => {
+            println!("{} Syncing all repositories...", style("🔄").blue());
+            workspace_manager
+                .sync_repositories(false, true, false, None)
+                .await?;
+        }
+        SmartActionType::CloneAndOpen(_) => {
+            search_and_clone_interactive(workspace_manager).await?;
+        }
+        SmartActionType::OpenRecent(repo_name) => {
+            launch_repository(workspace_manager, repo_name, None).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Launch a repository with the specified app
+async fn launch_repository(
+    workspace_manager: &mut WorkspaceManager,
+    repo_name: &str,
+    app: Option<&str>,
+) -> Result<()> {
+    // Get repository info and clone the path
+    let repo_path = workspace_manager
+        .get_repository(repo_name)
+        .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_name))?
+        .path
+        .clone();
+
+    // Determine which app to use
+    let app_to_use = if let Some(app_name) = app {
+        app_name.to_string()
+    } else {
+        // Get configured apps for this repo
+        let apps = workspace_manager.list_apps_for_repo(repo_name)?;
+        if apps.is_empty() {
+            // Prompt to configure an app
+            println!(
+                "{} No apps configured for '{}'",
+                style("⚠️").yellow(),
+                style(repo_name).cyan()
+            );
+            if prompt_yes_no("Would you like to configure an app?", true)? {
+                let app_name = prompt_app_selection()?;
+                workspace_manager
+                    .configure_app_for_repo(repo_name, &app_name, "default")
+                    .await?;
+                app_name
+            } else {
+                return Ok(());
+            }
+        } else if apps.len() == 1 {
+            apps[0].0.clone()
+        } else {
+            // Multiple apps configured, let user choose
+            let app_names: Vec<&str> = apps.iter().map(|(name, _)| name.as_str()).collect();
+            Select::new("Select app to open with:", app_names)
+                .prompt()?
+                .to_string()
+        }
+    };
+
+    // Open the repository
+    workspace_manager
+        .open_repo_with_app(repo_name, &app_to_use)
+        .await?;
+
+    // Update state with this access
+    let mut state = VibeState::load().unwrap_or_default();
+    state.add_recent_repo(repo_name.to_string(), repo_path, Some(app_to_use.clone()));
+    state.save()?;
+
+    println!(
+        "{} Opened {} with {}",
+        style("✓").green().bold(),
+        style(repo_name).cyan(),
+        style(&app_to_use).blue()
+    );
+
+    Ok(())
+}
+
+/// Configure apps for multiple repositories
+async fn configure_apps_for_repos(
+    workspace_manager: &mut WorkspaceManager,
+    repo_names: &[String],
+) -> Result<()> {
+    println!(
+        "{} Configure apps for {} repositories",
+        style("⚙️").blue(),
+        style(repo_names.len()).cyan()
+    );
+
+    // Let user choose an app
+    let app_name = prompt_app_selection()?;
+
+    // Configure for all repos
+    for repo_name in repo_names {
+        workspace_manager
+            .configure_app_for_repo(repo_name, &app_name, "default")
+            .await?;
+        println!(
+            "  {} Configured {} for {}",
+            style("✓").green(),
+            style(&app_name).blue(),
+            style(repo_name).cyan()
+        );
+    }
+
+    println!(
+        "\n{} Configured {} for all selected repositories",
+        style("✓").green().bold(),
+        style(&app_name).blue()
+    );
+
+    Ok(())
+}
+
+/// Clean up missing repositories
+async fn cleanup_missing_repos(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    let repos = workspace_manager.list_repositories();
+    let mut missing = Vec::new();
+    let workspace_root = workspace_manager.get_workspace_root();
+
+    for repo in repos {
+        let full_path = workspace_root.join(&repo.path);
+        if !full_path.exists() {
+            missing.push(repo.name.clone());
+        }
+    }
+
+    if missing.is_empty() {
+        println!("{} No missing repositories found", style("✓").green());
+        return Ok(());
+    }
+
+    println!(
+        "{} Found {} missing repositories:",
+        style("🧹").yellow(),
+        style(missing.len()).red()
+    );
+
+    for name in &missing {
+        println!("  {} {}", style("•").dim(), style(name).red());
+    }
+
+    if prompt_yes_no("\nRemove these from configuration?", true)? {
+        for name in missing {
+            workspace_manager.remove_repository(&name).await?;
+        }
+        println!(
+            "{} Cleaned up missing repositories",
+            style("✓").green().bold()
+        );
+    }
+
+    Ok(())
+}
+
+/// Run the first-time setup wizard
+pub async fn run_setup_wizard(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    println!("{}", style("🎉 Welcome to Vibe Workspace!").cyan().bold());
+    println!("\nLet's set up your workspace. This will only take a minute.\n");
+
+    // Step 1: Workspace discovery
+    println!(
+        "{}",
+        style("Step 1: Discovering repositories").yellow().bold()
+    );
+    let scan_path = workspace_manager.get_workspace_root().clone();
+    println!(
+        "📂 Scanning {} for git repositories...",
+        style(scan_path.display()).dim()
+    );
+
+    let repos = workspace_manager
+        .discover_repositories(&scan_path, 3)
+        .await?;
+
+    if repos.is_empty() {
+        println!("{} No git repositories found.", style("ℹ️").blue());
+        println!("You can add repositories later using 'vibe git clone' or 'vibe git search'.\n");
+    } else {
+        println!(
+            "{} Found {} repositories!",
+            style("✓").green().bold(),
+            style(repos.len()).cyan()
+        );
+
+        if prompt_yes_no("Add these repositories to your workspace?", true)? {
+            workspace_manager
+                .add_discovered_repositories(&repos)
+                .await?;
+            println!(
+                "{} Added repositories to workspace",
+                style("✓").green().bold()
+            );
+        }
+    }
+
+    // Step 2: App installation check
+    println!(
+        "\n{}",
+        style("Step 2: Checking installed apps").yellow().bold()
+    );
+    let available_apps = vec!["vscode", "warp", "iterm2", "wezterm"];
+    let mut has_apps = false;
+
+    for app in &available_apps {
+        if workspace_manager.is_app_available(app).await {
+            println!(
+                "  {} {} is installed",
+                style("✓").green(),
+                style(app).cyan()
+            );
+            has_apps = true;
+        }
+    }
+
+    if !has_apps {
+        println!("{} No supported apps found.", style("⚠️").yellow());
+        if prompt_yes_no("Would you like to install some apps?", true)? {
+            crate::apps::run_interactive_installer().await?;
+        }
+    }
+
+    // Step 3: Default app configuration
+    println!(
+        "\n{}",
+        style("Step 3: Default app configuration").yellow().bold()
+    );
+
+    if has_apps && !workspace_manager.list_repositories().is_empty() {
+        if prompt_yes_no(
+            "Would you like to configure a default app for your repositories?",
+            true,
+        )? {
+            let default_app = prompt_app_selection()?;
+
+            // Configure for all repositories
+            let repo_names: Vec<String> = workspace_manager
+                .list_repositories()
+                .iter()
+                .map(|r| r.name.clone())
+                .collect();
+
+            for repo_name in repo_names {
+                workspace_manager
+                    .configure_app_for_repo(&repo_name, &default_app, "default")
+                    .await?;
+            }
+
+            println!(
+                "{} Configured {} as default app for all repositories",
+                style("✓").green().bold(),
+                style(&default_app).cyan()
+            );
+        }
+    }
+
+    // Step 4: Quick tips
+    println!("\n{}", style("✨ Setup complete!").green().bold());
+    println!("\nHere are some quick tips to get started:");
+    println!(
+        "  {} Run {} to launch a repository",
+        style("•").dim(),
+        style("vibe").cyan()
+    );
+    println!(
+        "  {} Use {} to quickly open recent repos",
+        style("•").dim(),
+        style("vibe launch 1").cyan()
+    );
+    println!(
+        "  {} Clone and open in one command: {}",
+        style("•").dim(),
+        style("vibe go owner/repo").cyan()
+    );
+    println!(
+        "  {} Press {} in the menu to open recent repos",
+        style("•").dim(),
+        style("1-9").cyan()
+    );
+
+    println!("\nEnjoy using Vibe! 🚀");
+
+    Ok(())
+}
+
+async fn restore_backup_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    println!(
+        "{} {}",
+        console::style("📦 Restore from Backup").blue().bold(),
+        console::style("- Restore configuration from a previous backup").dim()
+    );
+    println!();
+
+    // Check if there are any backups available
+    let backups = workspace_manager.list_available_backups().await?;
+
+    if backups.is_empty() {
+        println!("{} No backup files found.", style("❌").red());
+        println!(
+            "{} Create a backup first with: vibe config backup",
+            style("💡").blue()
+        );
+        return Ok(());
+    }
+
+    println!(
+        "{} Found {} backup files:",
+        style("📋").blue(),
+        backups.len()
+    );
+    for backup in &backups {
+        let size_mb = backup.size as f64 / (1024.0 * 1024.0);
+        println!(
+            "  {} {} ({:.1} MB)",
+            style("→").dim(),
+            backup.display_name,
+            size_mb
+        );
+    }
+    println!();
+
+    // Ask user to confirm they want to proceed
+    let proceed = Confirm::new("Do you want to select a backup to restore?")
+        .with_default(false)
+        .prompt()?;
+
+    if !proceed {
+        println!("{} Restore cancelled", style("✓").green());
+        return Ok(());
+    }
+
+    // Let the workspace manager handle the interactive selection and restoration
+    workspace_manager.restore_from_backup(None, false).await?;
 
     Ok(())
 }

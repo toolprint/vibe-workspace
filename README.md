@@ -3,7 +3,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Cargo](https://img.shields.io/crates/v/vibe-workspace.svg)](https://crates.io/crates/vibe-workspace)
 
-A lightweight CLI tool designed to help developers quickly adopt vibe-coding patterns across multiple repositories. Vibe Workspace streamlines your development workflow by providing consistent environments, tooling configurations, and coding patterns for modern AI Agentic coding.
+A lightweight CLI tool designed to help developers quickly adopt vibe-coding patterns across multiple repositories.
+
+Vibe Workspace streamlines your development workflow by providing consistent environments, tooling configurations, and coding patterns for modern AI Agentic coding.
 
 ## Features
 
@@ -13,7 +15,7 @@ A lightweight CLI tool designed to help developers quickly adopt vibe-coding pat
 - 🔧 **Developer Tool Integration** - Pre-configured Warp, iTerm2, WezTerm, and VS Code templates
 - 🎨 **Vibe Templates** - Ready-to-use configurations for different tech stacks
 - 🔄 **Pattern Propagation** - Apply vibe patterns to new and existing repositories
-- 📱 **Interactive Mode** - Guided setup for vibe-coding workflows
+- 📱 **Menu Mode** - Guided setup for vibe-coding workflows
 - 🛠️ **Extensible** - Create custom vibe patterns for your team
 
 ## Installation
@@ -34,101 +36,29 @@ cargo install --path .
 
 ## Quick Start
 
-## Core Commands
-
-### Workspace Management
+Get started with the interactive setup wizard:
 
 ```bash
-# Initialize a new workspace
-vibe init
+# Run the setup wizard (recommended for first-time users)
+vibe setup
 
-# Interactive mode - manage everything through a TUI
-vibe interactive
-
-# Manage workspace configuration
-vibe config show
-vibe config set <key> <value>
+# Or launch the interactive menu
+vibe
 ```
 
-### Repository Operations
+The setup wizard will:
+1. **Discover repositories** in your workspace automatically
+2. **Check installed apps** (VS Code, Warp, iTerm2, WezTerm)
+3. **Configure default app** for opening repositories
 
+After setup, use these essential commands:
 ```bash
-# Repository discovery and management
-vibe git scan                 # Scan workspace for git repositories
-vibe git scan --import        # Scan and automatically import new repos
-vibe git reset --force        # Clear all tracked repositories from config
-
-# Git operations across repositories
-vibe git status              # Show status of all repositories
-vibe git sync                # Sync repositories (fetch and pull)
-vibe git clone <url>         # Clone and add to workspace
-
-# Open repository with configured app
-vibe open <repo-name> [--app <app>]
+vibe launch 1              # Quick launch recent repository
+vibe go <github-url>       # Clone, configure, and open in one command
+vibe                       # Interactive menu with smart actions
 ```
 
-### App Integration
-
-```bash
-# Configure app for a repository
-vibe apps configure <repo> <app> [--template <name>]
-
-# Show app configurations
-vibe apps show [--repo <name>] [--app <name>]
-
-# Install developer tools
-vibe apps install
-```
-
-### Template Management
-
-```bash
-# List templates for an app
-vibe apps template list <app>
-
-# Create custom template
-vibe apps template create <app> <name> --from-file <path>
-
-# Delete template
-vibe apps template delete <app> <name>
-```
-
-### Repository Discovery and Management
-
-```bash
-# Scan workspace for repositories
-vibe git scan                           # Show repository analysis
-vibe git scan --import                  # Import new repositories to config
-vibe git scan --depth 5                # Scan deeper directory levels
-vibe git scan --clean                   # Remove missing repositories from config
-vibe git scan --restore                 # Re-clone missing repositories
-
-# Repository lifecycle management
-vibe git reset                          # Clear all tracked repositories (with confirmation)
-vibe git reset --force                  # Clear all tracked repositories (no confirmation)
-
-# Advanced sync operations
-vibe git sync                           # Fetch and pull all repositories
-vibe git sync --fetch-only              # Only fetch, don't pull
-vibe git sync --save-dirty              # Save dirty changes before sync
-```
-
-**Repository Status Types:**
-- **✅ Tracked** - Repository exists and is tracked in config
-- **🆕 New** - Repository found but not in config (use `--import` to add)
-- **❌ Missing** - Repository in config but missing from filesystem
-
-**Hierarchical Display:**
-Repositories are organized by Git hosting organization for better management:
-```
-📁 toolprint (3 repos)
-  ✅ vibe-workspace (/path/to/repo)
-  🆕 new-project (/path/to/new-repo)
-  
-📁 microsoft (2 repos)
-  ✅ vscode (/path/to/vscode)
-  ❌ missing-repo (configured but missing)
-```
+For detailed getting started guide, see [Quick Start Guide](docs/QUICK_START.md).
 
 ## Supported Applications
 
@@ -137,72 +67,38 @@ Repositories are organized by Git hosting organization for better management:
 - **[WezTerm](https://wezfurlong.org/wezterm/)** - GPU-accelerated cross-platform terminal
 - **[Visual Studio Code](https://code.visualstudio.com/)** - Popular code editor with extensive plugin ecosystem
 
-## Template Variables
-
-All templates support these variables for customization:
-
-- `{{workspace_name}}` - Name of your vibe workspace
-- `{{repo_name}}` - Repository name
-- `{{repo_path}}` - Full path to repository
-- `{{repo_branch}}` - Default branch name
-- `{{repo_url}}` - Repository URL
+For detailed app configuration, templates, and additional developer tools, see [App Integration Guide](docs/APPS.md).
 
 ## Configuration
 
-Vibe stores its configuration and templates in:
+Vibe stores its configuration and data in `~/.vibe-workspace/`:
 
 ```
 ~/.vibe-workspace/
 ├── config.yaml          # Main workspace configuration
-├── workspaces/         # Individual workspace configs
-└── templates/          # App-specific templates
-    ├── warp/
-    ├── iterm2/
-    ├── wezterm/
-    └── vscode/
+├── state.json           # User preferences and recent repositories
+├── templates/           # App-specific templates
+│   ├── warp/
+│   ├── iterm2/
+│   ├── wezterm/
+│   └── vscode/
+├── cache/               # Performance caches
+│   ├── repositories.db  # Repository metadata cache
+│   └── git_status.db   # Git status cache
+└── backups/            # Configuration backups
 ```
 
-## Example: Onboarding a New Developer
+**Key Configuration Files:**
+- `config.yaml` - Repository definitions, app settings, and workspace configuration
+- `state.json` - Recent repositories, user preferences, and setup completion status
+- `templates/` - Customizable templates for how apps open repositories
 
-Here's how vibe-workspace accelerates team onboarding:
-
+Use these commands to manage configuration:
 ```bash
-# 1. New developer sets up workspace
-vibe init --name "company-workspace"
-
-# 2. Discover and import existing repositories
-vibe git scan --import                    # Auto-discover repositories in workspace
-# Or manually clone specific repositories
-vibe git clone https://github.com/company/frontend-app
-vibe git clone https://github.com/company/backend-api
-
-# 3. Review discovered repositories organized by organization
-vibe git scan                            # Shows hierarchical view:
-# 📁 company (4 repos)
-#   ✅ frontend-app (/workspace/frontend-app)
-#   ✅ backend-api (/workspace/backend-api)
-#   🆕 mobile-app (/workspace/mobile-app)  
-#   🆕 data-pipeline (/workspace/data-pipeline)
-
-# 4. Import new repositories found during scan
-vibe git scan --import
-
-# 5. Apply team-wide vibe patterns
-vibe apps configure frontend-app vscode --template company-react-vibe
-vibe apps configure backend-api warp --template company-node-vibe
-vibe apps configure mobile-app vscode --template company-flutter-vibe
-vibe apps configure data-pipeline warp --template company-python-vibe
-
-# 6. Developer is immediately productive
-vibe open frontend-app    # Same setup as entire team
-vibe open backend-api     # Identical shortcuts and tools
-
-# 7. Stay synchronized with team patterns
-vibe git sync --save-dirty              # Save work and update all repositories
-
-# 8. Fresh start if needed
-vibe git reset --force                  # Clear config to start over
-vibe git scan --import                  # Re-discover repositories
+vibe config show           # View current configuration
+vibe config edit           # Edit configuration file
+vibe config backup         # Create backup archive
+vibe config reset          # Factory reset (with confirmation)
 ```
 
 ## Development
@@ -224,30 +120,13 @@ cargo test
 
 The project is organized into modular components:
 
-- `apps/` - Application integrations (Warp, iTerm2, VS Code, WezTerm)
-- `workspace/` - Core workspace management functionality
-- `ui/` - Terminal UI components and prompts
-- `utils/` - Shared utilities (git, filesystem, platform detection)
-
-## Why Vibe Workspace?
-
-### For Individual Developers
-- **Zero Setup Time**: Start coding immediately with pre-configured environments
-- **Consistent Experience**: Same shortcuts and tools across all your projects
-- **Best Practices Built-in**: Industry standards are the default, not an afterthought
-- **Learning Accelerator**: Learn from embedded patterns as you code
-
-### For Teams
-- **Instant Onboarding**: New team members are productive on day one
-- **Enforced Standards**: Code quality patterns are built into the workflow
-- **Reduced Bike-shedding**: Decisions about tooling and setup are already made
-- **Knowledge Sharing**: Best practices are embedded in the vibe patterns
-
-### For Organizations
-- **Scalable Standards**: Enforce coding patterns across hundreds of repositories
-- **Reduced Complexity**: One tool manages all development environments
-- **Audit Trail**: Track which patterns are used where
-- **Evolution Path**: Update patterns centrally, propagate everywhere
+- `apps/` - Application integrations (Warp, iTerm2, VS Code, WezTerm) and installer
+- `cache/` - Performance caching system (repository metadata, git status)
+- `git/` - Git operations (clone, search, status) and provider integrations
+- `ui/` - Terminal UI components (prompts, menus, workflows, smart actions)
+- `uri/` - URI scheme handling for deep linking
+- `utils/` - Shared utilities (filesystem, git, platform detection)
+- `workspace/` - Core workspace management (config, discovery, operations)
 
 ## Contributing
 
