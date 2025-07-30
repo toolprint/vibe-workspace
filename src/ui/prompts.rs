@@ -130,7 +130,7 @@ async fn sync_repositories_interactive(workspace_manager: &WorkspaceManager) -> 
         .prompt()?;
 
     workspace_manager
-        .sync_repositories(fetch_only, prune, None)
+        .sync_repositories(fetch_only, prune, false, None)
         .await?;
 
     Ok(())

@@ -166,6 +166,42 @@ impl WorkspaceManager {
         format: &str,
         group: Option<&str>,
     ) -> Result<()> {
+        use super::repo_analyzer::analyze_workspace;
+        use crate::ui::hierarchical_display::render_status_summary;
+
+        // For JSON and compact formats, use the legacy behavior
+        if format == "json" || format == "compact" {
+            return self.show_status_legacy(dirty_only, format, group).await;
+        }
+
+        println!("{} Analyzing repository status...", style("🔍").blue());
+
+        // Analyze workspace to get hierarchical organization
+        let analysis = analyze_workspace(&self.config.workspace.root, &self.config, 3).await?;
+
+        // Use hierarchical display for status
+        render_status_summary(&analysis);
+
+        // TODO: Add WIP branch detection and out-of-sync tracking branch detection
+        // This should scan for:
+        // - Local branches with 'dirty/' or 'wip/' prefix
+        // - Branches that are ahead/behind their tracking branch
+        // - Uncommitted changes in working directory
+        // Example implementation:
+        // - Use `git branch --list 'dirty/*' 'wip/*'` to find WIP branches
+        // - Use `git for-each-ref --format='%(refname:short) %(upstream:trackshort)'` to check tracking status
+        // - Use `git status --porcelain` to check for uncommitted changes
+
+        Ok(())
+    }
+
+    /// Legacy status implementation for JSON and compact formats
+    async fn show_status_legacy(
+        &self,
+        dirty_only: bool,
+        format: &str,
+        group: Option<&str>,
+    ) -> Result<()> {
         let repositories = if let Some(group_name) = group {
             self.config.get_repositories_in_group(group_name)
         } else {
@@ -176,12 +212,6 @@ impl WorkspaceManager {
             println!("{} No repositories found", style("ℹ").yellow());
             return Ok(());
         }
-
-        println!(
-            "{} Checking status for {} repositories...",
-            style("🔍").blue(),
-            repositories.len()
-        );
 
         let mut statuses = Vec::new();
 
@@ -231,24 +261,7 @@ impl WorkspaceManager {
                     println!("{} {}", indicator, status.repository_name.cyan());
                 }
             }
-            _ => {
-                println!();
-                for status in &statuses {
-                    println!("{}", status.format_status_line());
-                }
-
-                // Summary
-                println!();
-                let clean_count = statuses.iter().filter(|s| s.clean).count();
-                let dirty_count = statuses.len() - clean_count;
-
-                println!(
-                    "{} {} clean, {} with changes",
-                    style("📊").blue(),
-                    style(clean_count).green(),
-                    style(dirty_count).red()
-                );
-            }
+            _ => unreachable!("Legacy status only handles json and compact formats"),
         }
 
         Ok(())
@@ -358,65 +371,6 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    pub async fn sync_repositories(
-        &self,
-        fetch_only: bool,
-        prune: bool,
-        group: Option<&str>,
-    ) -> Result<()> {
-        let repositories = if let Some(group_name) = group {
-            self.config.get_repositories_in_group(group_name)
-        } else {
-            self.config.repositories.iter().collect()
-        };
-
-        if repositories.is_empty() {
-            println!("{} No repositories found", style("ℹ").yellow());
-            return Ok(());
-        }
-
-        let action = if fetch_only { "Fetching" } else { "Syncing" };
-        println!(
-            "{} {} {} repositories...",
-            style("🔄").blue(),
-            action,
-            repositories.len()
-        );
-
-        let mut operations = vec![GitOperation::Fetch];
-        if prune {
-            operations.push(GitOperation::Custom("fetch --prune".to_string()));
-        }
-        if !fetch_only {
-            operations.push(GitOperation::Pull);
-        }
-
-        for repo in repositories {
-            let repo_path = self.config.workspace.root.join(&repo.path);
-
-            print!("{} {}... ", style("→").dim(), style(&repo.name).cyan());
-
-            let mut success = true;
-            for operation in &operations {
-                match operation.execute(&repo_path).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("{}", style("✗").red());
-                        eprintln!("  Error: {e}");
-                        success = false;
-                        break;
-                    }
-                }
-            }
-
-            if success {
-                println!("{}", style("✓").green());
-            }
-        }
-
-        Ok(())
-    }
-
     fn get_target_repositories(
         &self,
         repos: Option<&str>,
@@ -453,6 +407,235 @@ impl WorkspaceManager {
 
     pub fn get_template_manager(&self) -> &TemplateManager {
         &self.template_manager
+    }
+
+    /// Scan workspace for repositories with new hierarchical display and sync options
+    pub async fn scan_repositories(
+        &mut self,
+        scan_path: &Path,
+        depth: usize,
+        import: bool,
+        restore: bool,
+        clean: bool,
+    ) -> Result<()> {
+        use super::config_validator::{deduplicate_config, validate_config};
+        use super::repo_analyzer::analyze_workspace;
+        use super::sync_operations::{execute_sync_operations, print_sync_summary, SyncOptions};
+        use crate::ui::hierarchical_display::{render_workspace_analysis, DisplayOptions};
+
+        println!(
+            "{} Scanning repositories in {} (depth: {})",
+            style("🔍").blue(),
+            style(scan_path.display()).cyan(),
+            depth
+        );
+
+        // Validate and clean up config before analysis
+        let validation_report = validate_config(&self.config, scan_path)?;
+        if validation_report.has_issues() {
+            println!();
+            validation_report.print_report();
+
+            // Ask user if they want to auto-fix duplicates
+            if !validation_report.duplicates.is_empty() {
+                println!(
+                    "{} Auto-fixing duplicate repositories...",
+                    style("🔧").blue()
+                );
+                let dedup_report = deduplicate_config(&mut self.config, scan_path)?;
+
+                if dedup_report.duplicates.len() < validation_report.duplicates.len() {
+                    println!(
+                        "{} Removed {} duplicate entries",
+                        style("✓").green(),
+                        validation_report.duplicates.len() - dedup_report.duplicates.len()
+                    );
+                    // Save the cleaned config
+                    self.save_config().await?;
+                }
+                println!();
+            }
+        }
+
+        // Analyze workspace state
+        let analysis = analyze_workspace(scan_path, &self.config, depth).await?;
+
+        // Display results with hierarchical organization
+        let display_options = DisplayOptions::default();
+        render_workspace_analysis(&analysis, &display_options);
+
+        // Set up sync options
+        let mut sync_options = SyncOptions::new();
+        if import {
+            sync_options = sync_options.with_import();
+        }
+        if restore {
+            sync_options = sync_options.with_restore();
+        }
+        if clean {
+            sync_options = sync_options.with_clean();
+        }
+
+        // Show sync summary if any actions are requested
+        if sync_options.has_actions() {
+            print_sync_summary(&analysis, &sync_options);
+
+            // Execute sync operations
+            execute_sync_operations(scan_path, &mut self.config, &analysis, &sync_options).await?;
+
+            // Save updated config
+            self.save_config().await?;
+
+            // Re-analyze workspace to show updated state
+            println!();
+            println!("{} Updated workspace state:", style("📊").blue().bold());
+            println!("{}", "─".repeat(30));
+
+            let updated_analysis = analyze_workspace(scan_path, &self.config, depth).await?;
+            render_workspace_analysis(&updated_analysis, &display_options);
+        }
+
+        Ok(())
+    }
+
+    /// Enhanced sync repositories with dirty handling
+    pub async fn sync_repositories(
+        &self,
+        fetch_only: bool,
+        prune: bool,
+        save_dirty: bool,
+        group: Option<&str>,
+    ) -> Result<()> {
+        let repositories = if let Some(group_name) = group {
+            self.config.get_repositories_in_group(group_name)
+        } else {
+            self.config.repositories.iter().collect()
+        };
+
+        if repositories.is_empty() {
+            println!("{} No repositories found", style("ℹ").yellow());
+            return Ok(());
+        }
+
+        let action = if fetch_only { "Fetching" } else { "Syncing" };
+        println!(
+            "{} {} {} repositories...",
+            style("🔄").blue(),
+            action,
+            repositories.len()
+        );
+
+        if save_dirty {
+            println!(
+                "{} Auto-commit mode enabled - dirty repositories will be committed to dirty/{{timestamp}} branches",
+                style("💾").blue()
+            );
+        }
+
+        let mut operations = vec![GitOperation::Fetch];
+        if prune {
+            operations.push(GitOperation::Custom("fetch --prune".to_string()));
+        }
+        if !fetch_only {
+            operations.push(GitOperation::Pull);
+        }
+
+        for repo in repositories {
+            let repo_path = self.config.workspace.root.join(&repo.path);
+
+            print!("{} {}... ", style("→").dim(), style(&repo.name).cyan());
+
+            // Handle dirty repositories if save_dirty is enabled
+            if save_dirty {
+                if let Err(e) = self.handle_dirty_repository(&repo_path).await {
+                    println!("{} (dirty handling failed: {})", style("⚠️").yellow(), e);
+                    continue;
+                }
+            }
+
+            let mut success = true;
+            for operation in &operations {
+                match operation.execute(&repo_path).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        if e.to_string().contains("dirty") && !save_dirty {
+                            println!(
+                                "{} (dirty working directory - use --save-dirty to auto-commit)",
+                                style("⚠️").yellow()
+                            );
+                        } else {
+                            println!("{}", style("✗").red());
+                            eprintln!("  Error: {e}");
+                        }
+                        success = false;
+                        break;
+                    }
+                }
+            }
+
+            if success {
+                println!("{}", style("✓").green());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle dirty repository by creating a dirty/{timestamp} branch
+    async fn handle_dirty_repository(&self, repo_path: &Path) -> Result<()> {
+        use chrono::Utc;
+        use std::process::Command;
+
+        // Check if repository is dirty
+        let status_output = Command::new("git")
+            .args(&["status", "--porcelain"])
+            .current_dir(repo_path)
+            .output()?;
+
+        if status_output.stdout.is_empty() {
+            // Repository is clean, nothing to do
+            return Ok(());
+        }
+
+        // Create timestamp for branch name
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let branch_name = format!("dirty/{}", timestamp);
+
+        // Get current branch name
+        let current_branch_output = Command::new("git")
+            .args(&["branch", "--show-current"])
+            .current_dir(repo_path)
+            .output()?;
+        let current_branch = String::from_utf8_lossy(&current_branch_output.stdout)
+            .trim()
+            .to_string();
+
+        // Create and switch to dirty branch
+        Command::new("git")
+            .args(&["checkout", "-b", &branch_name])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Add all changes
+        Command::new("git")
+            .args(&["add", "-A"])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Commit changes
+        let commit_message = format!("WIP: auto-saved dirty changes from {}", current_branch);
+        Command::new("git")
+            .args(&["commit", "-m", &commit_message])
+            .current_dir(repo_path)
+            .output()?;
+
+        // Switch back to original branch
+        Command::new("git")
+            .args(&["checkout", &current_branch])
+            .current_dir(repo_path)
+            .output()?;
+
+        Ok(())
     }
 
     async fn save_config(&self) -> Result<()> {
@@ -1576,6 +1759,76 @@ impl WorkspaceManager {
     /// Factory reset - clear all configuration and reinitialize
     pub async fn factory_reset(&mut self, force: bool) -> Result<()> {
         self.factory_reset_with_options(force, false).await
+    }
+
+    /// Reset repository configuration only (clear all tracked repositories)
+    pub async fn reset_repositories(&mut self, force: bool) -> Result<()> {
+        let repo_count = self.config.repositories.len();
+
+        if repo_count == 0 {
+            println!("{} No repositories to reset", style("ℹ️").blue());
+            return Ok(());
+        }
+
+        if !force {
+            println!(
+                "{} This will remove all {} tracked repositories from your configuration",
+                style("⚠️").yellow(),
+                style(repo_count).bold()
+            );
+            println!(
+                "{} This will NOT delete the actual repository folders",
+                style("ℹ️").blue()
+            );
+            println!();
+
+            // Show repositories that will be removed
+            println!(
+                "{} Repositories to be removed from config:",
+                style("📋").blue()
+            );
+            for repo in &self.config.repositories {
+                println!(
+                    "  {} {} ({})",
+                    style("→").dim(),
+                    style(&repo.name).cyan(),
+                    style(repo.path.display()).dim()
+                );
+            }
+            println!();
+
+            use inquire::Confirm;
+            let confirm = Confirm::new("Continue with repository reset?")
+                .with_default(false)
+                .prompt()
+                .context("Failed to get user confirmation")?;
+
+            if !confirm {
+                println!("{} Repository reset cancelled", style("✓").green());
+                return Ok(());
+            }
+        }
+
+        // Clear repositories from config
+        self.config.repositories.clear();
+
+        // Save the updated config
+        self.config
+            .save_to_file(&self.config_path)
+            .await
+            .context("Failed to save updated configuration")?;
+
+        println!(
+            "{} Cleared {} repositories from configuration",
+            style("✅").green().bold(),
+            style(repo_count).bold()
+        );
+        println!(
+            "{} Use 'vibe git scan --import' to re-discover repositories",
+            style("💡").blue()
+        );
+
+        Ok(())
     }
 
     pub async fn factory_reset_with_options(

@@ -53,10 +53,15 @@ vibe config set <key> <value>
 ### Repository Operations
 
 ```bash
+# Repository discovery and management
+vibe git scan                 # Scan workspace for git repositories
+vibe git scan --import        # Scan and automatically import new repos
+vibe git reset --force        # Clear all tracked repositories from config
+
 # Git operations across repositories
-vibe git status              # Show status of all repos
-vibe git pull                 # Pull updates for all repos
-vibe git clone <url>          # Clone and add to workspace
+vibe git status              # Show status of all repositories
+vibe git sync                # Sync repositories (fetch and pull)
+vibe git clone <url>         # Clone and add to workspace
 
 # Open repository with configured app
 vibe open <repo-name> [--app <app>]
@@ -86,6 +91,43 @@ vibe apps template create <app> <name> --from-file <path>
 
 # Delete template
 vibe apps template delete <app> <name>
+```
+
+### Repository Discovery and Management
+
+```bash
+# Scan workspace for repositories
+vibe git scan                           # Show repository analysis
+vibe git scan --import                  # Import new repositories to config
+vibe git scan --depth 5                # Scan deeper directory levels
+vibe git scan --clean                   # Remove missing repositories from config
+vibe git scan --restore                 # Re-clone missing repositories
+
+# Repository lifecycle management
+vibe git reset                          # Clear all tracked repositories (with confirmation)
+vibe git reset --force                  # Clear all tracked repositories (no confirmation)
+
+# Advanced sync operations
+vibe git sync                           # Fetch and pull all repositories
+vibe git sync --fetch-only              # Only fetch, don't pull
+vibe git sync --save-dirty              # Save dirty changes before sync
+```
+
+**Repository Status Types:**
+- **✅ Tracked** - Repository exists and is tracked in config
+- **🆕 New** - Repository found but not in config (use `--import` to add)
+- **❌ Missing** - Repository in config but missing from filesystem
+
+**Hierarchical Display:**
+Repositories are organized by Git hosting organization for better management:
+```
+📁 toolprint (3 repos)
+  ✅ vibe-workspace (/path/to/repo)
+  🆕 new-project (/path/to/new-repo)
+  
+📁 microsoft (2 repos)
+  ✅ vscode (/path/to/vscode)
+  ❌ missing-repo (configured but missing)
 ```
 
 ## Supported Applications
@@ -125,31 +167,42 @@ Vibe stores its configuration and templates in:
 Here's how vibe-workspace accelerates team onboarding:
 
 ```bash
-# 1. New developer clones the team workspace
-git clone https://github.com/company/team-vibe-patterns
-cd team-vibe-patterns
-vibe init --from-template ./company-vibe.yaml
+# 1. New developer sets up workspace
+vibe init --name "company-workspace"
 
-# 2. Clone all team repositories with vibe patterns
+# 2. Discover and import existing repositories
+vibe git scan --import                    # Auto-discover repositories in workspace
+# Or manually clone specific repositories
 vibe git clone https://github.com/company/frontend-app
 vibe git clone https://github.com/company/backend-api
-vibe git clone https://github.com/company/mobile-app
-vibe git clone https://github.com/company/data-pipeline
 
-# 3. Apply team-wide vibe patterns
+# 3. Review discovered repositories organized by organization
+vibe git scan                            # Shows hierarchical view:
+# 📁 company (4 repos)
+#   ✅ frontend-app (/workspace/frontend-app)
+#   ✅ backend-api (/workspace/backend-api)
+#   🆕 mobile-app (/workspace/mobile-app)  
+#   🆕 data-pipeline (/workspace/data-pipeline)
+
+# 4. Import new repositories found during scan
+vibe git scan --import
+
+# 5. Apply team-wide vibe patterns
 vibe apps configure frontend-app vscode --template company-react-vibe
 vibe apps configure backend-api warp --template company-node-vibe
 vibe apps configure mobile-app vscode --template company-flutter-vibe
 vibe apps configure data-pipeline warp --template company-python-vibe
 
-# 4. Developer is immediately productive
+# 6. Developer is immediately productive
 vibe open frontend-app    # Same setup as entire team
 vibe open backend-api     # Identical shortcuts and tools
-# They can start coding with the team's patterns right away!
 
-# 5. Stay synchronized with team patterns
-vibe sync              # Pull latest vibe patterns
-vibe git pull          # Update all repositories
+# 7. Stay synchronized with team patterns
+vibe git sync --save-dirty              # Save work and update all repositories
+
+# 8. Fresh start if needed
+vibe git reset --force                  # Clear config to start over
+vibe git scan --import                  # Re-discover repositories
 ```
 
 ## Development

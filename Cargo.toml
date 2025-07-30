@@ -57,6 +57,9 @@ urlencoding = "2.1"
 # URL parsing
 url = "2.5"
 
+# Regular expressions
+regex = "1.10"
+
 # Interactive selection
 dialoguer = "0.11"
 

@@ -235,7 +235,29 @@ enum ConfigCommands {
 
 #[derive(Subcommand)]
 enum GitCommands {
-    /// Discover git repositories in directory structure
+    /// Scan workspace for git repositories
+    Scan {
+        /// Directory to scan for repositories
+        path: Option<PathBuf>,
+
+        /// Maximum depth to scan
+        #[arg(long, default_value = "3")]
+        depth: usize,
+
+        /// Add newly found repositories to config
+        #[arg(short, long)]
+        import: bool,
+
+        /// Re-clone missing repositories from config
+        #[arg(long)]
+        restore: bool,
+
+        /// Remove missing repositories from config
+        #[arg(long)]
+        clean: bool,
+    },
+
+    /// Discover git repositories in directory structure (deprecated: use scan)
     Discover {
         /// Directory to scan for repositories
         path: Option<PathBuf>,
@@ -292,6 +314,10 @@ enum GitCommands {
         #[arg(short, long)]
         prune: bool,
 
+        /// Auto-commit dirty changes to dirty/{timestamp} branch before sync
+        #[arg(short, long)]
+        save_dirty: bool,
+
         /// Target group
         #[arg(short, long)]
         group: Option<String>,
@@ -317,6 +343,13 @@ enum GitCommands {
 
     /// Search for repositories interactively
     Search,
+
+    /// Reset repository configuration (clear all tracked repositories)
+    Reset {
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[tokio::main]
@@ -573,11 +606,37 @@ async fn main() -> Result<()> {
             },
 
             Commands::Git { command } => match command {
+                GitCommands::Scan {
+                    path,
+                    depth,
+                    import,
+                    restore,
+                    clean,
+                } => {
+                    // Validate conflicting flags
+                    if restore && clean {
+                        anyhow::bail!("Cannot use --restore and --clean together");
+                    }
+
+                    let scan_path =
+                        path.unwrap_or_else(|| workspace_manager.get_workspace_root().clone());
+
+                    workspace_manager
+                        .scan_repositories(&scan_path, depth, import, restore, clean)
+                        .await?;
+                }
+
                 GitCommands::Discover {
                     path,
                     depth,
                     auto_add,
                 } => {
+                    // Show deprecation warning
+                    println!(
+                        "{} The 'discover' command is deprecated. Use 'scan --import' instead.",
+                        style("⚠️").yellow()
+                    );
+
                     let scan_path =
                         path.unwrap_or_else(|| workspace_manager.get_workspace_root().clone());
 
@@ -647,10 +706,11 @@ async fn main() -> Result<()> {
                 GitCommands::Sync {
                     fetch_only,
                     prune,
+                    save_dirty,
                     group,
                 } => {
                     workspace_manager
-                        .sync_repositories(fetch_only, prune, group.as_deref())
+                        .sync_repositories(fetch_only, prune, save_dirty, group.as_deref())
                         .await?;
                 }
 
@@ -676,6 +736,10 @@ async fn main() -> Result<()> {
                     let git_config = git::GitConfig::default();
                     git::SearchCommand::execute_interactive(&mut workspace_manager, &git_config)
                         .await?;
+                }
+
+                GitCommands::Reset { force } => {
+                    workspace_manager.reset_repositories(force).await?;
                 }
             },
 
