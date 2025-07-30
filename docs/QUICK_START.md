@@ -33,7 +33,7 @@ The setup wizard walks you through 3 simple steps:
 
 **Step 2: App Installation Check**
 - Checks which supported apps you have installed:
-  - ✅ VS Code, Warp Terminal, iTerm2, WezTerm
+  - ✅ VS Code, Warp Terminal, iTerm2, WezTerm, Cursor, Windsurf
 - Offers to install missing apps if needed
 
 **Step 3: Default App Configuration**
@@ -73,7 +73,7 @@ The `vibe go` command is perfect for quickly getting started with new repositori
 vibe go https://github.com/owner/repo
 
 # Clone with a specific app
-vibe go https://github.com/owner/repo --app vscode
+vibe go https://github.com/owner/repo --app cursor
 
 # Just clone without opening
 vibe go https://github.com/owner/repo --no-open
@@ -133,8 +133,8 @@ vibe git scan --restore
 ### Configure Apps for Repositories
 ```bash
 # Configure an app for a specific repository
-vibe apps configure my-repo vscode
-vibe apps configure my-repo warp --template custom
+vibe apps configure my-repo cursor
+vibe apps configure my-repo windsurf --template agentic
 
 # Show current configurations
 vibe apps show
@@ -148,7 +148,7 @@ vibe apps show --app warp
 vibe open my-repo
 
 # Open with specific app
-vibe open my-repo --app warp
+vibe open my-repo --app windsurf
 
 # Launch most recent repository
 vibe launch
@@ -163,6 +163,8 @@ vibe launch 3
 - **Warp Terminal** (`warp`) - Multi-pane terminal layouts with AI features  
 - **iTerm2** (`iterm2`) - Dynamic profiles with badges and color schemes
 - **WezTerm** (`wezterm`) - GPU-accelerated cross-platform terminal
+- **Cursor** (`cursor`) - AI-first code editor with built-in AI assistance
+- **Windsurf** (`windsurf`) - Agentic IDE powered by AI Flow paradigm
 
 ## 🔄 Ongoing Maintenance
 
@@ -222,13 +224,13 @@ vibe git sync --save-dirty
 # Discover all team repositories in your workspace
 vibe git scan --import
 
-# Configure VS Code for all frontend repositories
-vibe apps configure frontend-app vscode
-vibe apps configure web-dashboard vscode
+# Configure Cursor for all frontend repositories
+vibe apps configure frontend-app cursor
+vibe apps configure web-dashboard cursor
 
-# Configure Warp for all backend repositories  
-vibe apps configure api-server warp
-vibe apps configure worker-service warp
+# Configure Windsurf for all backend repositories  
+vibe apps configure api-server windsurf
+vibe apps configure worker-service windsurf
 
 # Quick access to any project
 vibe                          # Interactive menu with all projects

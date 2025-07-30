@@ -153,6 +153,14 @@ impl TemplateManager {
         self.save_template("vscode", "default", DEFAULT_VSCODE_TEMPLATE)
             .await?;
 
+        // Create default Cursor template
+        self.save_template("cursor", "default", DEFAULT_CURSOR_TEMPLATE)
+            .await?;
+
+        // Create default Windsurf template
+        self.save_template("windsurf", "default", DEFAULT_WINDSURF_TEMPLATE)
+            .await?;
+
         Ok(())
     }
 
@@ -393,6 +401,77 @@ pub const DEFAULT_VSCODE_TEMPLATE: &str = r#"{
       "pyproject.toml": "poetry.lock, uv.lock",
       "README.md": "README.*, CHANGELOG.*, CONTRIBUTING.*, LICENSE.*"
     }
+  },
+  "extensions": {
+    "recommendations": [
+      "eamodio.gitlens",
+      "mhutchie.git-graph",
+      "ms-vscode.vscode-json",
+      "redhat.vscode-yaml",
+      "tamasfe.even-better-toml"
+    ]
+  }
+}"#;
+
+// Default template for Cursor
+pub const DEFAULT_CURSOR_TEMPLATE: &str = r#"{
+  "folders": [
+    {
+      "name": "{{repo_name}}",
+      "path": "{{repo_path}}"
+    }
+  ],
+  "settings": {
+    "window.title": "{{repo_name}} - {{workspace_name}} (Cursor)",
+    "git.autoRepositoryDetection": true,
+    "git.autorefresh": true,
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+      "*.ts": "${capture}.js, ${capture}.d.ts.map, ${capture}.d.ts, ${capture}.js.map",
+      "*.tsx": "${capture}.js, ${capture}.d.ts.map, ${capture}.d.ts, ${capture}.js.map",
+      "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb",
+      "Cargo.toml": "Cargo.lock",
+      "pyproject.toml": "poetry.lock, uv.lock",
+      "README.md": "README.*, CHANGELOG.*, CONTRIBUTING.*, LICENSE.*"
+    },
+    "cursor.aiCodeActionsEnabled": true,
+    "cursor.aiReviewEnabled": true,
+    "cursor.copilotMode": true
+  },
+  "extensions": {
+    "recommendations": [
+      "eamodio.gitlens",
+      "mhutchie.git-graph",
+      "ms-vscode.vscode-json",
+      "redhat.vscode-yaml",
+      "tamasfe.even-better-toml"
+    ]
+  }
+}"#;
+
+// Default template for Windsurf
+pub const DEFAULT_WINDSURF_TEMPLATE: &str = r#"{
+  "folders": [
+    {
+      "name": "{{repo_name}}",
+      "path": "{{repo_path}}"
+    }
+  ],
+  "settings": {
+    "window.title": "{{repo_name}} - {{workspace_name}} (Windsurf)",
+    "git.autoRepositoryDetection": true,
+    "git.autorefresh": true,
+    "explorer.fileNesting.enabled": true,
+    "explorer.fileNesting.patterns": {
+      "*.ts": "${capture}.js, ${capture}.d.ts.map, ${capture}.d.ts, ${capture}.js.map",
+      "*.tsx": "${capture}.js, ${capture}.d.ts.map, ${capture}.d.ts, ${capture}.js.map",
+      "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb",
+      "Cargo.toml": "Cargo.lock",
+      "pyproject.toml": "poetry.lock, uv.lock",
+      "README.md": "README.*, CHANGELOG.*, CONTRIBUTING.*, LICENSE.*"
+    },
+    "windsurf.aiFlowEnabled": true,
+    "windsurf.agenticMode": true
   },
   "extensions": {
     "recommendations": [

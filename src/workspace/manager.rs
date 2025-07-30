@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use chrono::NaiveDateTime;
 use colored::*;
 use console::style;
 use std::path::{Path, PathBuf};
@@ -30,6 +29,8 @@ pub struct AppConfigState {
     pub iterm2: Option<String>,
     pub wezterm: Option<String>,
     pub vscode: Option<String>,
+    pub cursor: Option<String>,
+    pub windsurf: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1373,6 +1374,8 @@ impl WorkspaceManager {
                 "iterm2" => crate::workspace::templates::DEFAULT_ITERM2_TEMPLATE,
                 "wezterm" => crate::workspace::templates::DEFAULT_WEZTERM_TEMPLATE,
                 "vscode" => crate::workspace::templates::DEFAULT_VSCODE_TEMPLATE,
+                "cursor" => crate::workspace::templates::DEFAULT_CURSOR_TEMPLATE,
+                "windsurf" => crate::workspace::templates::DEFAULT_WINDSURF_TEMPLATE,
                 _ => {
                     println!("{} Unknown app '{}', skipping", style("⚠️").yellow(), app);
                     continue;
@@ -1444,6 +1447,12 @@ impl WorkspaceManager {
             "vscode" => {
                 crate::apps::open_with_vscode(&self.config, repo, &self.template_manager).await?;
             }
+            "cursor" => {
+                crate::apps::open_with_cursor(&self.config, repo, &self.template_manager).await?;
+            }
+            "windsurf" => {
+                crate::apps::open_with_windsurf(&self.config, repo, &self.template_manager).await?;
+            }
             _ => {
                 anyhow::bail!("Unknown app: {}", app);
             }
@@ -1476,6 +1485,8 @@ impl WorkspaceManager {
                     "iterm2" => state.iterm2 = Some(template),
                     "wezterm" => state.wezterm = Some(template),
                     "vscode" => state.vscode = Some(template),
+                    "cursor" => state.cursor = Some(template),
+                    "windsurf" => state.windsurf = Some(template),
                     _ => {} // ignore unknown apps
                 }
             }
@@ -1521,6 +1532,12 @@ impl WorkspaceManager {
             "vscode" => {
                 crate::apps::cleanup_vscode_config(&self.config, repo).await?;
             }
+            "cursor" => {
+                crate::apps::cleanup_cursor_config(&self.config, repo).await?;
+            }
+            "windsurf" => {
+                crate::apps::cleanup_windsurf_config(&self.config, repo).await?;
+            }
             _ => {
                 warn!("Unknown app '{}' for cleanup", app);
             }
@@ -1543,6 +1560,8 @@ impl WorkspaceManager {
             ("warp", current_state.warp.as_ref()),
             ("iterm2", current_state.iterm2.as_ref()),
             ("vscode", current_state.vscode.as_ref()),
+            ("cursor", current_state.cursor.as_ref()),
+            ("windsurf", current_state.windsurf.as_ref()),
         ];
 
         // Process each app selection

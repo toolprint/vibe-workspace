@@ -12,7 +12,7 @@ Vibe Workspace streamlines your development workflow by providing consistent env
 - 🚀 **Instant Setup** - Get productive in seconds with pre-configured vibe patterns
 - 🎯 **Pattern Enforcement** - Consistent coding patterns across all your repositories
 - 📁 **Multi-Repository Management** - Orchestrate vibe patterns across entire organizations
-- 🔧 **Developer Tool Integration** - Pre-configured Warp, iTerm2, WezTerm, and VS Code templates
+- 🔧 **Developer Tool Integration** - Pre-configured Warp, iTerm2, WezTerm, VS Code, Cursor, and Windsurf templates
 - 🎨 **Vibe Templates** - Ready-to-use configurations for different tech stacks
 - 🔄 **Pattern Propagation** - Apply vibe patterns to new and existing repositories
 - 📱 **Menu Mode** - Guided setup for vibe-coding workflows
@@ -48,7 +48,7 @@ vibe
 
 The setup wizard will:
 1. **Discover repositories** in your workspace automatically
-2. **Check installed apps** (VS Code, Warp, iTerm2, WezTerm)
+2. **Check installed apps** (VS Code, Warp, iTerm2, WezTerm, Cursor, Windsurf)
 3. **Configure default app** for opening repositories
 
 After setup, use these essential commands:
@@ -66,6 +66,8 @@ For detailed getting started guide, see [Quick Start Guide](docs/QUICK_START.md)
 - **[iTerm2](https://iterm2.com/)** - Feature-rich terminal emulator for macOS
 - **[WezTerm](https://wezfurlong.org/wezterm/)** - GPU-accelerated cross-platform terminal
 - **[Visual Studio Code](https://code.visualstudio.com/)** - Popular code editor with extensive plugin ecosystem
+- **[Cursor](https://cursor.sh/)** - AI-first code editor with built-in AI assistance and chat
+- **[Windsurf](https://codeium.com/windsurf)** - Agentic IDE powered by AI Flow paradigm
 
 For detailed app configuration, templates, and additional developer tools, see [App Integration Guide](docs/APPS.md).
 
@@ -81,7 +83,9 @@ Vibe stores its configuration and data in `~/.vibe-workspace/`:
 │   ├── warp/
 │   ├── iterm2/
 │   ├── wezterm/
-│   └── vscode/
+│   ├── vscode/
+│   ├── cursor/
+│   └── windsurf/
 ├── cache/               # Performance caches
 │   ├── repositories.db  # Repository metadata cache
 │   └── git_status.db   # Git status cache
@@ -120,7 +124,7 @@ cargo test
 
 The project is organized into modular components:
 
-- `apps/` - Application integrations (Warp, iTerm2, VS Code, WezTerm) and installer
+- `apps/` - Application integrations (Warp, iTerm2, VS Code, WezTerm, Cursor, Windsurf) and installer
 - `cache/` - Performance caching system (repository metadata, git status)
 - `git/` - Git operations (clone, search, status) and provider integrations
 - `ui/` - Terminal UI components (prompts, menus, workflows, smart actions)

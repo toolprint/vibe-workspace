@@ -58,6 +58,8 @@ pub struct AppIntegrations {
     pub iterm2: Option<ITerm2Integration>,
     pub vscode: Option<VSCodeIntegration>,
     pub wezterm: Option<WezTermIntegration>,
+    pub cursor: Option<CursorIntegration>,
+    pub windsurf: Option<WindsurfIntegration>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,6 +103,26 @@ pub struct VSCodeIntegration {
     pub enabled: bool,
     pub workspace_dir: PathBuf,
     #[serde(default = "default_vscode_template_dir")]
+    pub template_dir: PathBuf,
+    #[serde(default = "default_template_name")]
+    pub default_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CursorIntegration {
+    pub enabled: bool,
+    pub workspace_dir: PathBuf,
+    #[serde(default = "default_cursor_template_dir")]
+    pub template_dir: PathBuf,
+    #[serde(default = "default_template_name")]
+    pub default_template: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindsurfIntegration {
+    pub enabled: bool,
+    pub workspace_dir: PathBuf,
+    #[serde(default = "default_windsurf_template_dir")]
     pub template_dir: PathBuf,
     #[serde(default = "default_template_name")]
     pub default_template: String,
@@ -191,6 +213,24 @@ impl Default for WorkspaceConfig {
                         .join(".vscode")
                         .join("workspaces"),
                     template_dir: vibe_dir.join("templates").join("vscode"),
+                    default_template: "default".to_string(),
+                }),
+                cursor: Some(CursorIntegration {
+                    enabled: true,
+                    workspace_dir: dirs::home_dir()
+                        .unwrap_or_default()
+                        .join(".cursor")
+                        .join("workspaces"),
+                    template_dir: vibe_dir.join("templates").join("cursor"),
+                    default_template: "default".to_string(),
+                }),
+                windsurf: Some(WindsurfIntegration {
+                    enabled: true,
+                    workspace_dir: dirs::home_dir()
+                        .unwrap_or_default()
+                        .join(".windsurf")
+                        .join("workspaces"),
+                    template_dir: vibe_dir.join("templates").join("windsurf"),
                     default_template: "default".to_string(),
                 }),
             },
@@ -323,6 +363,30 @@ impl WorkspaceConfig {
             });
         }
 
+        if self.apps.cursor.is_none() {
+            self.apps.cursor = Some(CursorIntegration {
+                enabled: true,
+                workspace_dir: dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".cursor")
+                    .join("workspaces"),
+                template_dir: vibe_dir.join("templates").join("cursor"),
+                default_template: "default".to_string(),
+            });
+        }
+
+        if self.apps.windsurf.is_none() {
+            self.apps.windsurf = Some(WindsurfIntegration {
+                enabled: true,
+                workspace_dir: dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".windsurf")
+                    .join("workspaces"),
+                template_dir: vibe_dir.join("templates").join("windsurf"),
+                default_template: "default".to_string(),
+            });
+        }
+
         Ok(())
     }
 }
@@ -430,6 +494,22 @@ fn default_vscode_template_dir() -> PathBuf {
         .join(".vibe-workspace")
         .join("templates")
         .join("vscode")
+}
+
+fn default_cursor_template_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".vibe-workspace")
+        .join("templates")
+        .join("cursor")
+}
+
+fn default_windsurf_template_dir() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".vibe-workspace")
+        .join("templates")
+        .join("windsurf")
 }
 
 // Page size defaults

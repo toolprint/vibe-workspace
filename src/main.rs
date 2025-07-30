@@ -566,6 +566,8 @@ async fn main() -> Result<()> {
                                 "iterm2".to_string(),
                                 "wezterm".to_string(),
                                 "vscode".to_string(),
+                                "cursor".to_string(),
+                                "windsurf".to_string(),
                             ]
                         };
 

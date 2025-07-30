@@ -5,29 +5,29 @@ use tokio::fs;
 
 use crate::workspace::{Repository, TemplateManager, WorkspaceConfig};
 
-pub async fn open_with_vscode(
+pub async fn open_with_windsurf(
     config: &WorkspaceConfig,
     repo: &Repository,
     template_manager: &TemplateManager,
 ) -> Result<()> {
-    let vscode_integration = config
+    let windsurf_integration = config
         .apps
-        .vscode
+        .windsurf
         .as_ref()
-        .context("VS Code integration is not configured")?;
+        .context("Windsurf integration is not configured")?;
 
-    if !vscode_integration.enabled {
-        anyhow::bail!("VS Code integration is disabled in configuration");
+    if !windsurf_integration.enabled {
+        anyhow::bail!("Windsurf integration is disabled in configuration");
     }
 
     // Get the template to use
     let template_name = repo
-        .get_app_template("vscode")
-        .unwrap_or(&vscode_integration.default_template);
+        .get_app_template("windsurf")
+        .unwrap_or(&windsurf_integration.default_template);
 
     // Load the template
     let template_content = template_manager
-        .load_template("vscode", template_name)
+        .load_template("windsurf", template_name)
         .await
         .with_context(|| format!("Failed to load template '{template_name}'"))?;
 
@@ -42,15 +42,15 @@ pub async fn open_with_vscode(
         "vibe-{}-{}.code-workspace",
         config.workspace.name, repo.name
     );
-    let workspace_path = vscode_integration.workspace_dir.join(&workspace_name);
+    let workspace_path = windsurf_integration.workspace_dir.join(&workspace_name);
 
     // Create workspace directory if it doesn't exist
-    fs::create_dir_all(&vscode_integration.workspace_dir)
+    fs::create_dir_all(&windsurf_integration.workspace_dir)
         .await
         .with_context(|| {
             format!(
-                "Failed to create VS Code workspace directory: {}",
-                vscode_integration.workspace_dir.display()
+                "Failed to create Windsurf workspace directory: {}",
+                windsurf_integration.workspace_dir.display()
             )
         })?;
 
@@ -59,31 +59,31 @@ pub async fn open_with_vscode(
         .await
         .with_context(|| {
             format!(
-                "Failed to write VS Code workspace: {}",
+                "Failed to write Windsurf workspace: {}",
                 workspace_path.display()
             )
         })?;
 
     println!(
-        "{} Created VS Code workspace: {}",
+        "{} Created Windsurf workspace: {}",
         style("✅").green(),
         style(workspace_path.display()).cyan()
     );
 
-    // Try to open with VS Code
-    let result = Command::new("code").arg(&workspace_path).spawn();
+    // Try to open with Windsurf
+    let result = Command::new("windsurf").arg(&workspace_path).spawn();
 
     match result {
         Ok(_) => {
             println!(
-                "{} Opened VS Code with workspace",
+                "{} Opened Windsurf with workspace",
                 style("✓").green().bold()
             );
         }
         Err(e) => {
-            println!("{} Failed to open VS Code: {}", style("⚠️").yellow(), e);
+            println!("{} Failed to open Windsurf: {}", style("⚠️").yellow(), e);
             println!("\n{} Manual instructions:", style("📋").blue());
-            println!("1. Open VS Code");
+            println!("1. Open Windsurf");
             println!("2. File → Open Workspace from File...");
             println!("3. Navigate to: {}", workspace_path.display());
         }
@@ -92,15 +92,15 @@ pub async fn open_with_vscode(
     Ok(())
 }
 
-pub async fn cleanup_vscode_config(config: &WorkspaceConfig, repo: &Repository) -> Result<()> {
-    let vscode_integration = config
+pub async fn cleanup_windsurf_config(config: &WorkspaceConfig, repo: &Repository) -> Result<()> {
+    let windsurf_integration = config
         .apps
-        .vscode
+        .windsurf
         .as_ref()
-        .context("VS Code integration is not configured")?;
+        .context("Windsurf integration is not configured")?;
 
-    if !vscode_integration.enabled {
-        // If VS Code is disabled, no cleanup needed
+    if !windsurf_integration.enabled {
+        // If Windsurf is disabled, no cleanup needed
         return Ok(());
     }
 
@@ -109,18 +109,18 @@ pub async fn cleanup_vscode_config(config: &WorkspaceConfig, repo: &Repository) 
         "vibe-{}-{}.code-workspace",
         config.workspace.name, repo.name
     );
-    let workspace_path = vscode_integration.workspace_dir.join(&workspace_name);
+    let workspace_path = windsurf_integration.workspace_dir.join(&workspace_name);
 
     if workspace_path.exists() {
         fs::remove_file(&workspace_path).await.with_context(|| {
             format!(
-                "Failed to remove VS Code workspace: {}",
+                "Failed to remove Windsurf workspace: {}",
                 workspace_path.display()
             )
         })?;
 
         println!(
-            "{} Removed VS Code workspace file: {}",
+            "{} Removed Windsurf workspace file: {}",
             style("🗑️").red(),
             style(workspace_path.display()).cyan()
         );
@@ -132,7 +132,7 @@ pub async fn cleanup_vscode_config(config: &WorkspaceConfig, repo: &Repository) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::{AppIntegrations, Repository, VSCodeIntegration, WorkspaceInfo};
+    use crate::workspace::{AppIntegrations, Repository, WindsurfIntegration, WorkspaceInfo};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -154,15 +154,15 @@ mod tests {
                 github: None,
                 warp: None,
                 iterm2: None,
-                vscode: Some(VSCodeIntegration {
-                    enabled: true,
-                    workspace_dir: temp_dir.path().to_path_buf(),
-                    template_dir: temp_dir.path().join("templates").join("vscode"),
-                    default_template: "default".to_string(),
-                }),
+                vscode: None,
                 wezterm: None,
                 cursor: None,
-                windsurf: None,
+                windsurf: Some(WindsurfIntegration {
+                    enabled: true,
+                    workspace_dir: temp_dir.path().to_path_buf(),
+                    template_dir: temp_dir.path().join("templates").join("windsurf"),
+                    default_template: "default".to_string(),
+                }),
             },
             preferences: None,
         }

@@ -131,6 +131,14 @@ pub fn get_app_registry() -> Vec<AppPackage> {
             .with_binary_name("cursor")
             .with_version_command(vec!["--version"])
             .with_brew_cask("cursor"),
+        AppPackage::new(
+            "windsurf",
+            "Windsurf",
+            "Agentic IDE powered by AI Flow paradigm",
+        )
+        .with_binary_name("windsurf")
+        .with_version_command(vec!["--version"])
+        .with_brew_cask("windsurf"),
         // CLI tools
         AppPackage::new("gh", "GitHub CLI", "GitHub's official command line tool")
             .with_binary_name("gh")

@@ -371,6 +371,8 @@ mod tests {
                     template_dir: temp_dir.path().join("templates").join("wezterm"),
                     default_template: "default".to_string(),
                 }),
+                cursor: None,
+                windsurf: None,
             },
             preferences: None,
         }

@@ -28,16 +28,17 @@ vibe apps install
 
 Vibe Workspace supports two types of applications:
 
-### Apps for Opening Repositories (4 apps)
+### Apps for Opening Repositories (6 apps)
 These apps support full integration with repository opening, templates, and advanced configuration:
 - **Warp Terminal** - Modern terminal with AI features
 - **iTerm2** - Powerful macOS terminal emulator  
 - **WezTerm** - GPU-accelerated cross-platform terminal
 - **Visual Studio Code** - Microsoft's code editor
+- **Cursor** - AI-first code editor with built-in AI assistance
+- **Windsurf** - Agentic IDE powered by AI Flow paradigm
 
-### Additional Developer Tools (10+ apps)
+### Additional Developer Tools (9+ apps)
 These tools can be installed via the app installer but don't support repository opening:
-- **Cursor** - AI-first code editor
 - **GitHub CLI** - GitHub's official command line tool
 - **GitUI** - Terminal-based git interface
 - **Just** - Command runner and task automation
@@ -72,14 +73,21 @@ These tools can be installed via the app installer but don't support repository 
 - **Features**: Multi-root workspaces, extensions, tasks, settings
 - **Usage**: `vibe open <repo> --app vscode`
 
+### 5. Cursor
+- **Documentation**: https://cursor.sh/
+- **Configuration Format**: JSON (Workspace files, VSCode-compatible)
+- **Features**: AI-first editing, built-in AI chat, code generation, VSCode compatibility
+- **Usage**: `vibe open <repo> --app cursor`
+
+### 6. Windsurf
+- **Documentation**: https://codeium.com/windsurf
+- **Configuration Format**: JSON (Workspace files, VSCode-compatible)
+- **Features**: Agentic IDE, AI Flow paradigm, intelligent code assistance, collaborative AI
+- **Usage**: `vibe open <repo> --app windsurf`
+
 ## Additional Developer Tools
 
 The following tools can be installed via `vibe apps install` but don't support repository opening. They're useful development tools that can be used independently:
-
-### Code Editors
-- **Cursor** - AI-first code editor with built-in AI assistance
-  - Installation: Available via Homebrew cask
-  - Usage: Independent application, not integrated with repository opening
 
 ### CLI Development Tools
 - **GitHub CLI (gh)** - GitHub's official command line tool
@@ -159,9 +167,15 @@ Templates define how repositories are opened in each app. They support variable 
 ├── wezterm/
 │   ├── default.yaml
 │   └── development.yaml
-└── vscode/
+├── vscode/
+│   ├── default.json
+│   └── react-project.json
+├── cursor/
+│   ├── default.json
+│   └── ai-project.json
+└── windsurf/
     ├── default.json
-    └── react-project.json
+    └── agentic-project.json
 ```
 
 ### Template Variables
@@ -253,6 +267,52 @@ windows:
 }
 ```
 
+#### Cursor Default Template
+```json
+{
+  "folders": [
+    {
+      "name": "{{repo_name}}",
+      "path": "{{repo_path}}"
+    }
+  ],
+  "settings": {
+    "window.title": "{{repo_name}} - {{workspace_name}}",
+    "cursor.aiCodeActionsEnabled": true,
+    "cursor.aiChatEnabled": true
+  },
+  "extensions": {
+    "recommendations": [
+      "eamodio.gitlens",
+      "ms-vscode.vscode-json"
+    ]
+  }
+}
+```
+
+#### Windsurf Default Template
+```json
+{
+  "folders": [
+    {
+      "name": "{{repo_name}}",
+      "path": "{{repo_path}}"
+    }
+  ],
+  "settings": {
+    "window.title": "{{repo_name}} - {{workspace_name}}",
+    "windsurf.aiFlowEnabled": true,
+    "windsurf.agenticMode": true
+  },
+  "extensions": {
+    "recommendations": [
+      "eamodio.gitlens",
+      "ms-vscode.vscode-json"
+    ]
+  }
+}
+```
+
 ## Configuration Examples
 
 ### Basic Configuration
@@ -275,6 +335,10 @@ repositories:
         template: "microservices"
       vscode:
         template: "python-dev"
+      cursor:
+        template: "ai-assisted"
+      windsurf:
+        template: "agentic-dev"
       iterm2:
         template: "production"
       wezterm:
@@ -304,6 +368,16 @@ apps:
     workspace_dir: ~/.vscode/workspaces
     template_dir: ~/.vibe-workspace/templates/vscode
     default_template: "default"
+  cursor:
+    enabled: true
+    workspace_dir: ~/.cursor/workspaces
+    template_dir: ~/.vibe-workspace/templates/cursor
+    default_template: "default"
+  windsurf:
+    enabled: true
+    workspace_dir: ~/.windsurf/workspaces
+    template_dir: ~/.vibe-workspace/templates/windsurf
+    default_template: "default"
 ```
 
 ## Creating Custom Templates
@@ -322,6 +396,12 @@ Create a new file in the appropriate template directory:
 
 # For VS Code
 ~/.vibe-workspace/templates/vscode/my-template.json
+
+# For Cursor
+~/.vibe-workspace/templates/cursor/my-template.json
+
+# For Windsurf
+~/.vibe-workspace/templates/windsurf/my-template.json
 ```
 
 ### Step 2: Customize Template
@@ -388,6 +468,18 @@ repositories:
 - **Task Definitions**: Pre-configured build/test tasks
 - **Settings Override**: Workspace-specific settings
 
+### Cursor Features
+- **AI-First Editing**: Built-in AI assistance and code generation
+- **VSCode Compatibility**: Full compatibility with VSCode extensions and settings
+- **AI Chat Interface**: Integrated AI chat for code questions and assistance
+- **Smart Code Actions**: AI-powered code suggestions and improvements
+
+### Windsurf Features
+- **Agentic IDE**: AI Flow paradigm with intelligent code assistance
+- **Collaborative AI**: Multi-agent AI system for complex development tasks
+- **VSCode Compatibility**: Full compatibility with VSCode extensions and settings
+- **Intelligent Workflows**: AI-powered development workflows and automation
+
 ## Troubleshooting
 
 ### Common Issues
@@ -428,6 +520,16 @@ If automatic launching fails, each app provides manual instructions:
 
 **VS Code**:
 1. Open VS Code
+2. File → Open Workspace from File
+3. Navigate to generated workspace file
+
+**Cursor**:
+1. Open Cursor
+2. File → Open Workspace from File
+3. Navigate to generated workspace file
+
+**Windsurf**:
+1. Open Windsurf
 2. File → Open Workspace from File
 3. Navigate to generated workspace file
 

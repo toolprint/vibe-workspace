@@ -177,17 +177,6 @@ install: build-release
         echo "   Or ensure ~/.cargo/bin is in your PATH"
         echo ""
         
-        # Create symlink for v -> vibe
-        if [ -f "$cargo_bin_dir/vibe" ]; then
-            echo "🔗 Creating symlink: v -> vibe"
-            ln -sf "$cargo_bin_dir/vibe" "$cargo_bin_dir/v"
-            if [ -f "$cargo_bin_dir/v" ]; then
-                echo "   ✅ Symlink created successfully: $cargo_bin_dir/v"
-            else
-                echo "   ❌ Failed to create symlink"
-            fi
-        fi
-        
     else
         echo ""
         echo "❌ Installation failed!"

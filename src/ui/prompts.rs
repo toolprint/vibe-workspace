@@ -584,6 +584,22 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
     };
     app_options.push(wezterm_status);
 
+    // Cursor option
+    let cursor_status = if let Some(template) = &current_state.cursor {
+        format!("cursor (template: {template})")
+    } else {
+        "cursor".to_string()
+    };
+    app_options.push(cursor_status);
+
+    // Windsurf option
+    let windsurf_status = if let Some(template) = &current_state.windsurf {
+        format!("windsurf (template: {template})")
+    } else {
+        "windsurf".to_string()
+    };
+    app_options.push(windsurf_status);
+
     // Determine which apps are currently selected (pre-populate with indices)
     let mut default_selections = Vec::new();
     if current_state.warp.is_some() {
@@ -597,6 +613,12 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
     }
     if current_state.wezterm.is_some() {
         default_selections.push(3);
+    }
+    if current_state.cursor.is_some() {
+        default_selections.push(4);
+    }
+    if current_state.windsurf.is_some() {
+        default_selections.push(5);
     }
 
     // Also create display selections for the status display
@@ -612,6 +634,12 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
     }
     if current_state.wezterm.is_some() {
         display_selections.push(&app_options[3]);
+    }
+    if current_state.cursor.is_some() {
+        display_selections.push(&app_options[4]);
+    }
+    if current_state.windsurf.is_some() {
+        display_selections.push(&app_options[5]);
     }
 
     println!(
@@ -639,7 +667,7 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
         .prompt()?;
 
     // Quick actions check
-    if selected_apps.len() == 4 && display_selections.is_empty() {
+    if selected_apps.len() == 6 && display_selections.is_empty() {
         println!(
             "{} Selected all apps for configuration",
             console::style("🚀").blue()
@@ -651,7 +679,7 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
     // Create app selections with template choices
     let mut app_selections = Vec::new();
 
-    for app_name in ["warp", "iterm2", "vscode", "wezterm"] {
+    for app_name in ["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"] {
         let app_option = app_options
             .iter()
             .find(|opt| opt.starts_with(app_name))
@@ -663,6 +691,8 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
             "iterm2" => current_state.iterm2.is_some(),
             "vscode" => current_state.vscode.is_some(),
             "wezterm" => current_state.wezterm.is_some(),
+            "cursor" => current_state.cursor.is_some(),
+            "windsurf" => current_state.windsurf.is_some(),
             _ => false,
         };
 
@@ -707,6 +737,8 @@ async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) ->
                 "iterm2" => current_state.iterm2.clone(),
                 "vscode" => current_state.vscode.clone(),
                 "wezterm" => current_state.wezterm.clone(),
+                "cursor" => current_state.cursor.clone(),
+                "windsurf" => current_state.windsurf.clone(),
                 _ => None,
             };
         }
@@ -781,7 +813,7 @@ async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> R
 
         match action.as_str() {
             "List templates" => {
-                let apps = vec!["warp", "iterm2", "vscode", "wezterm"];
+                let apps = vec!["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"];
                 let app_result = Select::new("Select app:", apps)
                     .with_help_message("Choose app • ESC to go back")
                     .prompt();
@@ -803,7 +835,7 @@ async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> R
             }
 
             "Create template" => {
-                let apps = vec!["warp", "iterm2", "vscode", "wezterm"];
+                let apps = vec!["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"];
                 let app = Select::new("Select app:", apps).prompt()?;
 
                 let name = Text::new("Template name:").prompt()?;
@@ -845,7 +877,7 @@ async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> R
             }
 
             "Delete template" => {
-                let apps = vec!["warp", "iterm2", "vscode", "wezterm"];
+                let apps = vec!["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"];
                 let app = Select::new("Select app:", apps).prompt()?;
 
                 let templates = workspace_manager.list_templates(app).await?;
@@ -880,7 +912,7 @@ async fn manage_templates_interactive(workspace_manager: &WorkspaceManager) -> R
             }
 
             "View template content" => {
-                let apps = vec!["warp", "iterm2", "vscode", "wezterm"];
+                let apps = vec!["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"];
                 let app = Select::new("Select app:", apps).prompt()?;
 
                 let templates = workspace_manager.list_templates(app).await?;
@@ -1264,7 +1296,7 @@ pub fn prompt_yes_no(prompt: &str, default: bool) -> Result<bool> {
 
 /// Prompt user to select an app
 pub fn prompt_app_selection() -> Result<String> {
-    let apps = vec!["vscode", "warp", "iterm2", "wezterm"];
+    let apps = vec!["vscode", "warp", "iterm2", "wezterm", "cursor", "windsurf"];
     Select::new("Select an app to configure:", apps)
         .prompt()
         .map(|s| s.to_string())

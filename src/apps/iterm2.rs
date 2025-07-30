@@ -401,6 +401,8 @@ mod tests {
                     default_template: "default".to_string(),
                 }),
                 wezterm: None,
+                cursor: None,
+                windsurf: None,
             },
             preferences: None,
         }
