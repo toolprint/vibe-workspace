@@ -1628,6 +1628,18 @@ mcp-inspector-cli-examples:
     echo "   - Programmatic testing"
     echo "   - Quick command-line debugging"
 
+# Validate MCP-CLI consistency
+[group('mcp')]
+mcp-validate:
+    #!/usr/bin/env bash
+    echo "🔍 Validating MCP-CLI consistency..."
+    echo "====================================="
+    echo ""
+    echo "Running validate_mcp_interface tool to check all MCP tools..."
+    echo ""
+    npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio \
+        --method tools/call --tool-name validate_mcp_interface --tool-arg verbose=true
+
 # Show MCP testing help
 [group('mcp')]
 mcp-help:
@@ -1641,6 +1653,7 @@ mcp-help:
     @echo "  just mcp-inspector-call-tool    - Call a tool via CLI"
     @echo "  just mcp-inspector-cli-examples - Show CLI usage examples"
     @echo "  just mcp-inspector-export       - Show config for Claude/Cursor"
+    @echo "  just mcp-validate               - Validate MCP-CLI consistency"
     @echo ""
     @echo "💡 Start with 'just mcp-inspector' for visual debugging"
     @echo "   Or use 'just mcp-inspector-cli' for command-line testing"

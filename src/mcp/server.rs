@@ -36,12 +36,34 @@ impl VibeMCPServer {
     /// Builds the tool registry with all available tools
     fn build_registry() -> ToolRegistry {
         ToolRegistryBuilder::new()
-            // Git tools
+            // Configuration management tools
+            .with_tool(Arc::new(handlers::InitWorkspaceTool))
+            .with_tool(Arc::new(handlers::ShowConfigTool))
+            .with_tool(Arc::new(handlers::InitConfigTool))
+            .with_tool(Arc::new(handlers::ValidateConfigTool))
+            .with_tool(Arc::new(handlers::ResetConfigTool))
+            .with_tool(Arc::new(handlers::BackupConfigTool))
+            .with_tool(Arc::new(handlers::RestoreConfigTool))
+            // App management tools
+            .with_tool(Arc::new(handlers::ConfigureAppTool))
+            .with_tool(Arc::new(handlers::ShowAppsTool))
+            .with_tool(Arc::new(handlers::ListAppTemplatesTool))
+            .with_tool(Arc::new(handlers::CreateAppTemplateTool))
+            .with_tool(Arc::new(handlers::DeleteAppTemplateTool))
+            .with_tool(Arc::new(handlers::UpdateDefaultTemplatesTool))
+            // Repository operation tools
+            .with_tool(Arc::new(handlers::LaunchRepoTool))
+            .with_tool(Arc::new(handlers::OpenRepoTool))
+            .with_tool(Arc::new(handlers::CloneAndOpenTool))
+            // Git operation tools
             .with_tool(Arc::new(handlers::GitStatusTool))
-            // TODO: Add more tools here as they are implemented
-            // .with_tool(Arc::new(handlers::GitCloneTool))
-            // .with_tool(Arc::new(handlers::WorkspaceInitTool))
-            // .with_tool(Arc::new(handlers::AppConfigureTool))
+            .with_tool(Arc::new(handlers::ScanReposTool))
+            .with_tool(Arc::new(handlers::SyncReposTool))
+            .with_tool(Arc::new(handlers::CloneRepoTool))
+            .with_tool(Arc::new(handlers::ExecGitCommandTool))
+            .with_tool(Arc::new(handlers::ResetGitConfigTool))
+            // Validation tool
+            .with_tool(Arc::new(handlers::ValidateMcpInterfaceTool))
             .build()
     }
 
