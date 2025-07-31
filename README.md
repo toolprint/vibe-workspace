@@ -16,6 +16,7 @@ Vibe Workspace streamlines your development workflow by providing consistent env
 - 🎨 **Vibe Templates** - Ready-to-use configurations for different tech stacks
 - 🔄 **Pattern Propagation** - Apply vibe patterns to new and existing repositories
 - 📱 **Menu Mode** - Guided setup for vibe-coding workflows
+- 🤖 **MCP Support** - Model Context Protocol server for AI integration
 - 🛠️ **Extensible** - Create custom vibe patterns for your team
 
 ## Installation
@@ -105,6 +106,10 @@ vibe config backup         # Create backup archive
 vibe config reset          # Factory reset (with confirmation)
 ```
 
+## MCP Integration
+
+vibe-workspace includes built-in MCP (Model Context Protocol) server capabilities for AI integration. See [MCP Documentation](docs/MCP.md) for details.
+
 ## Development
 
 ### Building
@@ -127,6 +132,7 @@ The project is organized into modular components:
 - `apps/` - Application integrations (Warp, iTerm2, VS Code, WezTerm, Cursor, Windsurf) and installer
 - `cache/` - Performance caching system (repository metadata, git status)
 - `git/` - Git operations (clone, search, status) and provider integrations
+- `mcp/` - Model Context Protocol server for AI integration
 - `ui/` - Terminal UI components (prompts, menus, workflows, smart actions)
 - `uri/` - URI scheme handling for deep linking
 - `utils/` - Shared utilities (filesystem, git, platform detection)

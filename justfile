@@ -1489,3 +1489,179 @@ release-all:
         echo "⏳ Cargo publish pending"
     fi
 
+# =====================================
+# MCP Testing Commands
+# =====================================
+
+
+# Launch MCP Inspector UI for interactive testing
+[group('mcp')]
+mcp-inspector:
+    #!/usr/bin/env bash
+    echo "🔍 Launching MCP Inspector for vibe-workspace..."
+    echo "=============================================="
+    echo ""
+    echo "📡 Starting Inspector UI at http://localhost:6274"
+    echo "🔐 Note the session token for authentication"
+    echo ""
+    echo "💡 Tips:"
+    echo "   - Use the UI to test tools interactively"
+    echo "   - View request/response details in real-time"
+    echo "   - Export server config for Claude/Cursor"
+    echo ""
+    echo "Press Ctrl+C to stop the Inspector"
+    echo ""
+    npx @modelcontextprotocol/inspector cargo run -- mcp --stdio
+
+# Launch MCP Inspector in CLI mode (non-interactive)
+[group('mcp')]
+mcp-inspector-cli:
+    #!/usr/bin/env bash
+    echo "🔍 Running MCP Inspector in CLI mode..."
+    echo "======================================="
+    echo ""
+    echo "📋 Listing available tools:"
+    npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio --method tools/list
+
+# Test MCP Inspector installation
+[group('mcp')]
+mcp-inspector-test:
+    #!/usr/bin/env bash
+    echo "🔍 Testing MCP Inspector installation..."
+    echo "======================================="
+    echo ""
+    
+    # Check if npx is available
+    if ! command -v npx &> /dev/null; then
+        echo "❌ npx not found. Please install Node.js first."
+        exit 1
+    fi
+    
+    # Try to run the Inspector with just the version flag
+    echo "Checking Inspector version..."
+    if npx @modelcontextprotocol/inspector --help 2>&1 | grep -q "Usage:"; then
+        echo "✅ MCP Inspector is available and working"
+        echo ""
+        echo "You can now use:"
+        echo "  • just mcp-inspector - Launch the Inspector UI"
+    else
+        echo "❌ Failed to run MCP Inspector"
+        echo "This might be a first-time download. Try running 'just mcp-inspector' directly."
+    fi
+
+# List all tools using Inspector CLI mode
+[group('mcp')]
+mcp-inspector-list-tools:
+    #!/usr/bin/env bash
+    echo "📋 Listing MCP tools via Inspector CLI..."
+    echo "========================================"
+    echo ""
+    npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio --method tools/list
+
+
+# Call a specific tool using Inspector CLI mode
+[group('mcp')]
+mcp-inspector-call-tool tool_name params='{}':
+    #!/usr/bin/env bash
+    echo "🔧 Calling tool '{{tool_name}}' via Inspector CLI..."
+    echo "=================================================="
+    echo "Parameters: {{params}}"
+    echo ""
+    
+    # Parse JSON params into tool-arg format
+    if [ "{{params}}" = "{}" ]; then
+        npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio --method tools/call --tool-name {{tool_name}}
+    else
+        # Convert JSON to tool-arg format (simple implementation for common cases)
+        args=""
+        if echo '{{params}}' | grep -q '"dirty_only":[[:space:]]*true'; then
+            args="$args --tool-arg dirty_only=true"
+        fi
+        if echo '{{params}}' | grep -q '"format":[[:space:]]*"[^"]*"'; then
+            format=$(echo '{{params}}' | sed -n 's/.*"format":[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ -n "$format" ]; then
+                args="$args --tool-arg format=$format"
+            fi
+        fi
+        if echo '{{params}}' | grep -q '"group":[[:space:]]*"[^"]*"'; then
+            group=$(echo '{{params}}' | sed -n 's/.*"group":[[:space:]]*"\([^"]*\)".*/\1/p')
+            if [ -n "$group" ]; then
+                args="$args --tool-arg group=$group"
+            fi
+        fi
+        
+        npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio --method tools/call --tool-name {{tool_name}} $args
+    fi
+
+# Show CLI mode usage examples
+[group('mcp')]
+mcp-inspector-cli-examples:
+    #!/usr/bin/env bash
+    echo "📚 MCP Inspector CLI Mode Examples"
+    echo "=================================="
+    echo ""
+    echo "Basic Usage:"
+    echo "  npx @modelcontextprotocol/inspector --cli <server_command> --method <method>"
+    echo ""
+    echo "Available Methods:"
+    echo "  • tools/list         - List all available tools"
+    echo "  • tools/call         - Call a specific tool"
+    echo ""
+    echo "Examples with vibe-workspace:"
+    echo ""
+    echo "1. List tools:"
+    echo "   just mcp-inspector-list-tools"
+    echo ""
+    echo "2. Call git status tool (show dirty repos only):"
+    echo "   just mcp-inspector-call-tool vibe_git_status '{\"dirty_only\": true}'"
+    echo ""
+    echo "3. Call with different format:"
+    echo "   just mcp-inspector-call-tool vibe_git_status '{\"format\": \"table\"}'"
+    echo ""
+    echo "4. Direct CLI usage (without JSON parsing):"
+    echo "   npx @modelcontextprotocol/inspector --cli cargo run -- mcp --stdio \\"
+    echo "     --method tools/call --tool-name vibe_git_status --tool-arg dirty_only=true"
+    echo ""
+    echo "💡 CLI mode is ideal for:"
+    echo "   - Scripting and automation"
+    echo "   - CI/CD integration"
+    echo "   - Programmatic testing"
+    echo "   - Quick command-line debugging"
+
+# Show MCP testing help
+[group('mcp')]
+mcp-help:
+    @echo "📚 MCP Testing Commands"
+    @echo "======================="
+    @echo ""
+    @echo "MCP Inspector Testing:"
+    @echo "  just mcp-inspector              - Launch Inspector UI (visual testing)"
+    @echo "  just mcp-inspector-cli          - Run Inspector in CLI mode"
+    @echo "  just mcp-inspector-list-tools   - List tools via CLI"
+    @echo "  just mcp-inspector-call-tool    - Call a tool via CLI"
+    @echo "  just mcp-inspector-cli-examples - Show CLI usage examples"
+    @echo "  just mcp-inspector-export       - Show config for Claude/Cursor"
+    @echo ""
+    @echo "💡 Start with 'just mcp-inspector' for visual debugging"
+    @echo "   Or use 'just mcp-inspector-cli' for command-line testing"
+
+# Show how to export server configuration
+[group('mcp')]
+mcp-inspector-export:
+    @echo "📋 MCP Server Configuration Export"
+    @echo "=================================="
+    @echo ""
+    @echo "Add this to your MCP config:"
+    @echo ""
+    @echo '  "vibe": {'
+    @echo '    "command": "vibe",'
+    @echo '    "args": ["mcp", "--stdio"]'
+    @echo '  }'
+    @echo ""
+    @echo "Or with full path:"
+    @echo ""
+    @echo '  "vibe": {'
+    @echo '    "command": "'$(which vibe || echo "/path/to/vibe")'",'
+    @echo '    "args": ["mcp", "--stdio"]'
+    @echo '  }'
+

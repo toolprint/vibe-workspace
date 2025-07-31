@@ -2,11 +2,12 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
 use std::path::PathBuf;
-use tracing::Level;
 
 mod apps;
 mod cache;
 mod git;
+mod mcp;
+mod output;
 mod ui;
 mod uri;
 mod utils;
@@ -120,6 +121,17 @@ enum Commands {
         /// Skip the setup wizard
         #[arg(long)]
         skip: bool,
+    },
+
+    /// Run as MCP (Model Context Protocol) server
+    Mcp {
+        /// Use HTTP transport on specified port
+        #[arg(long, conflicts_with = "stdio")]
+        port: Option<u16>,
+
+        /// Use stdio transport (default)
+        #[arg(long, default_value = "true")]
+        stdio: bool,
     },
 }
 
@@ -404,17 +416,14 @@ enum GitCommands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging
-    let log_level = if cli.verbose {
-        Level::DEBUG
-    } else {
-        Level::INFO
+    // Determine output mode based on command
+    let output_mode = match &cli.command {
+        Some(Commands::Mcp { .. }) => output::OutputMode::Mcp,
+        _ => output::OutputMode::Cli,
     };
-    tracing_subscriber::fmt()
-        .with_max_level(log_level)
-        .with_target(false)
-        .without_time()
-        .init();
+
+    // Initialize output system (this handles tracing setup)
+    output::init_with_verbosity(output_mode, cli.verbose);
 
     // Load or create workspace configuration
     let config_path = cli.config.unwrap_or_else(|| {
@@ -969,6 +978,38 @@ async fn main() -> Result<()> {
                     let mut state = VibeState::load().unwrap_or_default();
                     state.complete_setup_wizard();
                     state.save()?;
+                }
+            }
+
+            Commands::Mcp { port, stdio: _ } => {
+                use std::sync::Arc;
+                use tokio::sync::Mutex;
+
+                // Create shared workspace manager for MCP server
+                let shared_workspace = Arc::new(Mutex::new(workspace_manager));
+
+                if let Some(port_num) = port {
+                    // HTTP transport not implemented in this example
+                    // You would need to implement HTTP transport support
+                    display_eprintln!(
+                        "{} HTTP transport on port {} not yet implemented",
+                        style("⚠️").yellow(),
+                        port_num
+                    );
+                    display_eprintln!(
+                        "{} Use --stdio flag for stdio transport",
+                        style("💡").blue()
+                    );
+                    std::process::exit(1);
+                } else {
+                    // Run with stdio transport (default)
+                    display_eprintln!(
+                        "{} Starting vibe-workspace MCP server (stdio transport)...",
+                        style("🚀").green()
+                    );
+
+                    let mcp_server = mcp::VibeMCPServer::new(shared_workspace);
+                    mcp_server.run().await?;
                 }
             }
         },
