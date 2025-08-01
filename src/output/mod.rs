@@ -7,7 +7,7 @@
 mod config;
 mod display;
 mod logging;
-mod writer;
+pub(crate) mod writer;
 
 pub use config::{OutputConfig, OutputMode};
 

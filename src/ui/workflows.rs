@@ -1,10 +1,13 @@
 use anyhow::Result;
 use console::style;
 
-use crate::git::{CloneCommand, GitConfig};
 use crate::ui::prompts::{prompt_app_selection, prompt_yes_no};
 use crate::ui::state::VibeState;
 use crate::workspace::WorkspaceManager;
+use crate::{
+    display_println,
+    git::{CloneCommand, GitConfig},
+};
 
 /// Represents the next action in a workflow
 pub enum NextAction {
@@ -40,7 +43,7 @@ impl Workflow for CloneAndOpenWorkflow {
         manager: &'a mut WorkspaceManager,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<NextAction>> + Send + 'a>> {
         Box::pin(async move {
-            println!("{} Cloning repository...", style("📥").blue());
+            display_println!("{} Cloning repository...", style("📥").blue());
 
             // Clone the repository
             let git_config = GitConfig::default();
@@ -61,7 +64,7 @@ impl Workflow for CloneAndOpenWorkflow {
                 .ok_or_else(|| anyhow::anyhow!("Could not determine repository name"))?
                 .to_string();
 
-            println!(
+            display_println!(
                 "{} Repository '{}' cloned successfully!",
                 style("✓").green().bold(),
                 style(&repo_name).cyan()
@@ -98,7 +101,7 @@ impl Workflow for ConfigureAppWorkflow {
             let apps = manager.list_apps_for_repo(&self.repo_name)?;
 
             if !apps.is_empty() {
-                println!(
+                display_println!(
                     "{} Repository already has {} app{} configured",
                     style("ℹ️").blue(),
                     apps.len(),
@@ -116,7 +119,7 @@ impl Workflow for ConfigureAppWorkflow {
             }
 
             // Prompt to configure app
-            println!(
+            display_println!(
                 "\n{} Configure app for '{}'?",
                 style("🔧").blue(),
                 style(&self.repo_name).cyan()
@@ -133,7 +136,7 @@ impl Workflow for ConfigureAppWorkflow {
                     .configure_app_for_repo(&self.repo_name, &app_name, "default")
                     .await?;
 
-                println!(
+                display_println!(
                     "{} Configured {} for repository",
                     style("✓").green().bold(),
                     style(&app_name).cyan()
@@ -151,7 +154,7 @@ impl Workflow for ConfigureAppWorkflow {
             } else {
                 // Skip configuration
                 if self.open_after {
-                    println!("\n{} Opening with default app...", style("🚀").blue());
+                    display_println!("\n{} Opening with default app...", style("🚀").blue());
                     Ok(NextAction::Continue(Box::new(OpenRepositoryWorkflow {
                         repo_name: self.repo_name.clone(),
                         preferred_app: None,
@@ -210,7 +213,7 @@ impl Workflow for OpenRepositoryWorkflow {
             state.add_recent_repo(self.repo_name.clone(), repo_path, Some(app_to_use.clone()));
             state.save()?;
 
-            println!(
+            display_println!(
                 "{} Opened {} with {}!",
                 style("🎉").green().bold(),
                 style(&self.repo_name).cyan(),
@@ -242,41 +245,11 @@ impl Workflow for SetupWorkspaceWorkflow {
         manager: &'a mut WorkspaceManager,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<NextAction>> + Send + 'a>> {
         Box::pin(async move {
-            println!("{}", style("🎉 Setting up your workspace!").cyan().bold());
+            // Use the new enhanced setup wizard
+            crate::ui::setup_wizard::run_enhanced_setup_wizard(manager).await?;
 
-            // Discover repositories
-            if self.auto_discover {
-                let workspace_root = manager.get_workspace_root().clone();
-                println!("\n{} Discovering repositories...", style("🔍").blue());
-
-                let repos = manager.discover_repositories(&workspace_root, 3).await?;
-
-                if !repos.is_empty() {
-                    println!(
-                        "{} Found {} repositories!",
-                        style("✓").green().bold(),
-                        style(repos.len()).cyan()
-                    );
-
-                    manager.add_discovered_repositories(&repos).await?;
-
-                    // Continue to app configuration
-                    return Ok(NextAction::Continue(Box::new(
-                        ConfigureDefaultAppWorkflow {
-                            repo_count: repos.len(),
-                        },
-                    )));
-                } else {
-                    println!("{} No repositories found in workspace", style("ℹ️").blue());
-                }
-            }
-
-            // Suggest next actions
-            Ok(NextAction::Suggest(vec![
-                "Clone a repository with 'vibe go <url>'".to_string(),
-                "Search GitHub with 'vibe git search'".to_string(),
-                "Manually add repositories with 'vibe git scan'".to_string(),
-            ]))
+            // Mark setup as complete and return
+            Ok(NextAction::Complete)
         })
     }
 
@@ -296,7 +269,7 @@ impl Workflow for ConfigureDefaultAppWorkflow {
         manager: &'a mut WorkspaceManager,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<NextAction>> + Send + 'a>> {
         Box::pin(async move {
-            println!(
+            display_println!(
                 "\n{} Configure a default app for your {} repositories?",
                 style("🔧").blue(),
                 self.repo_count
@@ -318,7 +291,7 @@ impl Workflow for ConfigureDefaultAppWorkflow {
                         .await?;
                 }
 
-                println!(
+                display_println!(
                     "{} Configured {} as default app for all repositories!",
                     style("✓").green().bold(),
                     style(&app_name).cyan()
@@ -326,7 +299,7 @@ impl Workflow for ConfigureDefaultAppWorkflow {
             }
 
             // Setup complete
-            println!("\n{} Workspace setup complete!", style("✨").green().bold());
+            display_println!("\n{} Workspace setup complete!", style("✨").green().bold());
 
             Ok(NextAction::Suggest(vec![
                 "Run 'vibe' to start managing repositories".to_string(),
@@ -349,7 +322,7 @@ pub async fn execute_workflow(
     let mut current_workflow = workflow;
 
     loop {
-        println!(
+        display_println!(
             "\n{} {}",
             style("▶").blue(),
             style(current_workflow.description()).dim()
@@ -357,17 +330,17 @@ pub async fn execute_workflow(
 
         match current_workflow.execute(manager).await? {
             NextAction::Complete => {
-                println!("\n{} Workflow complete!", style("✓").green().bold());
+                display_println!("\n{} Workflow complete!", style("✓").green().bold());
                 break;
             }
             NextAction::Continue(next) => {
-                println!("\n{} Continuing workflow...", style("→").cyan());
+                display_println!("\n{} Continuing workflow...", style("→").cyan());
                 current_workflow = next;
             }
             NextAction::Suggest(suggestions) => {
-                println!("\n{} Next steps:", style("💡").yellow());
+                display_println!("\n{} Next steps:", style("💡").yellow());
                 for suggestion in suggestions {
-                    println!("  {} {}", style("•").dim(), suggestion);
+                    display_println!("  {} {}", style("•").dim(), suggestion);
                 }
                 break;
             }

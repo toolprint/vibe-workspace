@@ -19,7 +19,15 @@ use workspace::WorkspaceManager;
 #[derive(Parser)]
 #[command(name = "vibe")]
 #[command(
-    about = "Lightweight CLI for managing multiple git repositories and workspace configurations"
+    about = "Lightweight CLI for managing multiple git repositories and workspace configurations",
+    long_about = "Vibe helps you manage multiple git repositories from a single place.\n\
+                  Think of it as a smart launcher for your development projects.\n\n\
+                  GETTING STARTED:\n  \
+                  1. Run 'vibe' to start the interactive menu\n  \
+                  2. Or run 'vibe setup' for first-time configuration\n  \
+                  3. Clone repos with 'vibe go owner/repo'\n  \
+                  4. Open repos with 'vibe launch [name]'\n\n\
+                  For detailed help: vibe help getting-started"
 )]
 #[command(version)]
 struct Cli {
@@ -78,7 +86,7 @@ enum Commands {
         /// Repository name
         repo: String,
 
-        /// App to open with (warp, iterm2, vscode, wezterm)
+        /// App to open with (warp, iterm2, vscode, wezterm, cursor, windsurf)
         #[arg(short, long)]
         app: Option<String>,
 
@@ -133,6 +141,18 @@ enum Commands {
         #[arg(long, default_value = "true")]
         stdio: bool,
     },
+
+    /// Show help for specific topics
+    Help {
+        #[command(subcommand)]
+        topic: HelpTopic,
+    },
+}
+
+#[derive(Subcommand)]
+enum HelpTopic {
+    /// Getting started guide
+    GettingStarted,
 }
 
 #[derive(Subcommand)]
@@ -142,7 +162,7 @@ enum AppsCommands {
         /// Repository name
         repo: String,
 
-        /// App to configure (warp, iterm2, vscode, wezterm)
+        /// App to configure (warp, iterm2, vscode, wezterm, cursor, windsurf)
         app: String,
 
         /// Template to use
@@ -456,7 +476,7 @@ async fn main() -> Result<()> {
                     .init_workspace(&workspace_name, &workspace_root)
                     .await?;
 
-                println!(
+                display_println!(
                     "{} Initialized workspace '{}' in {}",
                     style("✓").green().bold(),
                     style(&workspace_name).cyan().bold(),
@@ -474,7 +494,7 @@ async fn main() -> Result<()> {
                     workspace_manager
                         .configure_app_for_repo(&repo, &app, template_name)
                         .await?;
-                    println!(
+                    display_println!(
                         "{} Configured {} for repository '{}' with template '{}'",
                         style("✓").green().bold(),
                         style(&app).cyan(),
@@ -486,13 +506,13 @@ async fn main() -> Result<()> {
                 AppsCommands::Show { repo, app } => {
                     if let Some(repo_name) = repo {
                         let apps = workspace_manager.list_apps_for_repo(&repo_name)?;
-                        println!(
+                        display_println!(
                             "{} Apps configured for repository '{}':",
                             style("📱").blue(),
                             style(&repo_name).cyan().bold()
                         );
                         for (app_name, template) in apps {
-                            println!(
+                            display_println!(
                                 "  {} {} (template: {})",
                                 style("→").dim(),
                                 style(&app_name).green(),
@@ -501,13 +521,13 @@ async fn main() -> Result<()> {
                         }
                     } else if let Some(app_name) = app {
                         let repos = workspace_manager.list_repos_with_app(&app_name);
-                        println!(
+                        display_println!(
                             "{} Repositories with {} configured:",
                             style("📱").blue(),
                             style(&app_name).cyan().bold()
                         );
                         for (repo, template) in repos {
-                            println!(
+                            display_println!(
                                 "  {} {} (template: {})",
                                 style("→").dim(),
                                 style(&repo.name).green(),
@@ -523,13 +543,13 @@ async fn main() -> Result<()> {
                 AppsCommands::Template { command } => match command {
                     TemplateCommands::List { app } => {
                         let templates = workspace_manager.list_templates(&app).await?;
-                        println!(
+                        display_println!(
                             "{} Available templates for {}:",
                             style("📄").blue(),
                             style(&app).cyan().bold()
                         );
                         for template in templates {
-                            println!("  {} {}", style("→").dim(), style(&template).green());
+                            display_println!("  {} {}", style("→").dim(), style(&template).green());
                         }
                     }
 
@@ -548,7 +568,7 @@ async fn main() -> Result<()> {
                         workspace_manager
                             .save_template(&app, &name, &content)
                             .await?;
-                        println!(
+                        display_println!(
                             "{} Created template '{}' for {}",
                             style("✓").green().bold(),
                             style(&name).cyan(),
@@ -558,7 +578,7 @@ async fn main() -> Result<()> {
 
                     TemplateCommands::Delete { app, name } => {
                         workspace_manager.delete_template(&app, &name).await?;
-                        println!(
+                        display_println!(
                             "{} Deleted template '{}' from {}",
                             style("✓").green().bold(),
                             style(&name).cyan(),
@@ -581,7 +601,7 @@ async fn main() -> Result<()> {
                         };
 
                         if !force {
-                            println!(
+                            display_println!(
                                 "{} This will overwrite existing default templates for: {}",
                                 style("⚠️").yellow(),
                                 apps_to_update.join(", ")
@@ -594,7 +614,7 @@ async fn main() -> Result<()> {
                             io::stdin().read_line(&mut input)?;
 
                             if !input.trim().eq_ignore_ascii_case("y") {
-                                println!("{} Update cancelled", style("ℹ️").blue());
+                                display_println!("{} Update cancelled", style("ℹ️").blue());
                                 return Ok(());
                             }
                         }
@@ -602,7 +622,7 @@ async fn main() -> Result<()> {
                         workspace_manager
                             .update_default_templates(apps_to_update)
                             .await?;
-                        println!(
+                        display_println!(
                             "{} Updated default templates with current bundled versions",
                             style("✓").green().bold()
                         );
@@ -656,7 +676,7 @@ async fn main() -> Result<()> {
 
                 ConfigCommands::Backup { output, name } => {
                     let backup_path = workspace_manager.create_backup(output, name).await?;
-                    println!(
+                    display_println!(
                         "{} Backup created successfully: {}",
                         style("✓").green().bold(),
                         style(backup_path.display()).cyan()
@@ -695,7 +715,7 @@ async fn main() -> Result<()> {
                     auto_add,
                 } => {
                     // Show deprecation warning
-                    println!(
+                    display_println!(
                         "{} The 'discover' command is deprecated. Use 'scan --import' instead.",
                         style("⚠️").yellow()
                     );
@@ -703,7 +723,7 @@ async fn main() -> Result<()> {
                     let scan_path =
                         path.unwrap_or_else(|| workspace_manager.get_workspace_root().clone());
 
-                    println!(
+                    display_println!(
                         "{} Discovering repositories in {} (depth: {})",
                         style("🔍").blue(),
                         style(scan_path.display()).cyan(),
@@ -715,30 +735,30 @@ async fn main() -> Result<()> {
                         .await?;
 
                     if repos.is_empty() {
-                        println!("{} No git repositories found", style("ℹ").yellow());
+                        display_println!("{} No git repositories found", style("ℹ").yellow());
                         return Ok(());
                     }
 
-                    println!(
+                    display_println!(
                         "\n{} Found {} repositories:",
                         style("📁").green(),
                         style(repos.len()).bold()
                     );
 
                     for repo in &repos {
-                        println!("  {} {}", style("→").dim(), style(repo.display()).cyan());
+                        display_println!("  {} {}", style("→").dim(), style(repo.display()).cyan());
                     }
 
                     if auto_add {
                         workspace_manager
                             .add_discovered_repositories(&repos)
                             .await?;
-                        println!(
+                        display_println!(
                             "\n{} Added repositories to workspace configuration",
                             style("✓").green().bold()
                         );
                     } else {
-                        println!(
+                        display_println!(
                             "\n{} Run with --auto-add to add these to your workspace",
                             style("💡").yellow()
                         );
@@ -820,7 +840,7 @@ async fn main() -> Result<()> {
                     // Open with default or show available apps
                     let apps = workspace_manager.list_apps_for_repo(&repo)?;
                     if apps.is_empty() {
-                        println!(
+                        display_println!(
                         "{} No apps configured for repository '{}'. Configure with: vibe apps configure {} <app>",
                         style("⚠️").yellow(),
                         style(&repo).cyan(),
@@ -834,13 +854,13 @@ async fn main() -> Result<()> {
                             .await?;
                     } else {
                         // Multiple apps configured, show options
-                        println!(
+                        display_println!(
                             "{} Multiple apps configured for '{}'. Please specify one:",
                             style("🤔").yellow(),
                             style(&repo).cyan()
                         );
                         for (app_name, _template) in &apps {
-                            println!(
+                            display_println!(
                                 "  {} vibe open {} --app {}",
                                 style("→").dim(),
                                 &repo,
@@ -914,7 +934,7 @@ async fn main() -> Result<()> {
                 );
                 state.save()?;
 
-                println!(
+                display_println!(
                     "{} Launched {} with {}",
                     style("🚀").green(),
                     style(&repo_to_open).cyan().bold(),
@@ -951,7 +971,7 @@ async fn main() -> Result<()> {
                     )
                     .await?;
 
-                    println!(
+                    display_println!(
                         "{} Repository cloned successfully!",
                         style("✓").green().bold()
                     );
@@ -963,7 +983,7 @@ async fn main() -> Result<()> {
                     let mut state = VibeState::load().unwrap_or_default();
                     state.complete_setup_wizard();
                     state.save()?;
-                    println!("{} Setup wizard skipped", style("ℹ️").blue());
+                    display_println!("{} Setup wizard skipped", style("ℹ️").blue());
                 } else {
                     use ui::workflows::{execute_workflow, SetupWorkspaceWorkflow};
 
@@ -1012,8 +1032,121 @@ async fn main() -> Result<()> {
                     mcp_server.run().await?;
                 }
             }
+
+            Commands::Help { topic } => match topic {
+                HelpTopic::GettingStarted => {
+                    print_getting_started_guide();
+                }
+            },
         },
     }
 
     Ok(())
+}
+
+/// Print the getting started guide
+fn print_getting_started_guide() {
+    display_println!("{}", style("🚀 Getting Started with Vibe").cyan().bold());
+    display_println!("{}", style("═".repeat(40)).dim());
+    display_println!();
+
+    display_println!("{}", style("What is Vibe?").yellow().bold());
+    display_println!("Vibe helps you manage multiple git repositories from a single place.");
+    display_println!("Think of it as a smart launcher for your development projects.");
+    display_println!();
+
+    display_println!("{}", style("Quick Start").yellow().bold());
+    display_println!(
+        "1. {} - Start the interactive menu (recommended)",
+        style("vibe").cyan().bold()
+    );
+    display_println!("2. {} - Run the setup wizard", style("vibe setup").cyan());
+    display_println!(
+        "3. {} - Clone and open a GitHub repo",
+        style("vibe go owner/repo").cyan()
+    );
+    display_println!();
+
+    display_println!("{}", style("Basic Commands").yellow().bold());
+    display_println!(
+        "  {} - Interactive menu with quick launch",
+        style("vibe").cyan()
+    );
+    display_println!(
+        "  {} - Clone, configure, and open in one command",
+        style("vibe go <url>").cyan()
+    );
+    display_println!(
+        "  {} - Open a specific repository",
+        style("vibe launch <name>").cyan()
+    );
+    display_println!(
+        "  {} - Quick open recent (use 1-9)",
+        style("vibe launch <number>").cyan()
+    );
+    display_println!(
+        "  {} - Open repository with specific app",
+        style("vibe open <repo> -a <app>").cyan()
+    );
+    display_println!();
+
+    display_println!("{}", style("Repository Management").yellow().bold());
+    display_println!(
+        "  {} - Clone a repository",
+        style("vibe git clone <url>").cyan()
+    );
+    display_println!(
+        "  {} - Search GitHub repositories",
+        style("vibe git search <query>").cyan()
+    );
+    display_println!(
+        "  {} - Scan directory for repositories",
+        style("vibe git scan [path]").cyan()
+    );
+    display_println!(
+        "  {} - Show git status across all repos",
+        style("vibe git status").cyan()
+    );
+    display_println!(
+        "  {} - Sync all repositories",
+        style("vibe git sync").cyan()
+    );
+    display_println!();
+
+    display_println!("{}", style("App Configuration").yellow().bold());
+    display_println!(
+        "  {} - Configure app for repository",
+        style("vibe apps configure <repo>").cyan()
+    );
+    display_println!(
+        "  {} - Install app integrations",
+        style("vibe apps install").cyan()
+    );
+    display_println!(
+        "  {} - Show app configurations",
+        style("vibe apps show").cyan()
+    );
+    display_println!();
+
+    display_println!("{}", style("Tips").yellow().bold());
+    display_println!(
+        "• In the menu, press {} to quickly open recent repositories",
+        style("1-9").cyan()
+    );
+    display_println!("• Apps are your development tools (VS Code, iTerm2, etc.)");
+    display_println!("• Templates define how to open your repo in each app");
+    display_println!(
+        "• Run {} to see all available commands",
+        style("vibe --help").cyan()
+    );
+    display_println!();
+
+    display_println!("{}", style("Next Steps").green().bold());
+    display_println!("1. Run {} to start exploring", style("vibe").cyan().bold());
+    display_println!(
+        "2. Clone your first repo with {}",
+        style("vibe go <owner/repo>").cyan()
+    );
+    display_println!("3. Configure your favorite apps");
+    display_println!();
 }

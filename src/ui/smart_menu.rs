@@ -90,7 +90,7 @@ impl SmartMenu {
 
         // Check available apps
         let mut available_apps = Vec::new();
-        for app in &["vscode", "warp", "iterm2", "wezterm"] {
+        for app in &["vscode", "warp", "iterm2", "wezterm", "cursor", "windsurf"] {
             if manager.is_app_available(app).await {
                 available_apps.push(app.to_string());
             }

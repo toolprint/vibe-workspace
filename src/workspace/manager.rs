@@ -4,6 +4,8 @@ use console::style;
 use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
+use crate::display_println;
+
 use crate::cache::{GitStatusCache, RepositoryCache};
 
 use super::{
@@ -1356,7 +1358,23 @@ impl WorkspaceManager {
 
     /// Get the default template content for an app
     pub async fn get_default_template(&self, app: &str) -> Result<String> {
-        self.template_manager.load_template(app, "default").await
+        // Try to load from file first
+        match self.template_manager.load_template(app, "default").await {
+            Ok(content) => Ok(content),
+            Err(_) => {
+                // Fall back to bundled defaults
+                let default_content = match app {
+                    "warp" => crate::workspace::templates::DEFAULT_WARP_TEMPLATE,
+                    "iterm2" => crate::workspace::templates::DEFAULT_ITERM2_TEMPLATE,
+                    "wezterm" => crate::workspace::templates::DEFAULT_WEZTERM_TEMPLATE,
+                    "vscode" => crate::workspace::templates::DEFAULT_VSCODE_TEMPLATE,
+                    "cursor" => crate::workspace::templates::DEFAULT_CURSOR_TEMPLATE,
+                    "windsurf" => crate::workspace::templates::DEFAULT_WINDSURF_TEMPLATE,
+                    _ => anyhow::bail!("Unknown app '{}' and no default template found", app),
+                };
+                Ok(default_content.to_string())
+            }
+        }
     }
 
     /// Save a template with content
@@ -1910,22 +1928,22 @@ impl WorkspaceManager {
     ) -> Result<()> {
         if !force {
             // Show warning and get confirmation
-            println!(
+            display_println!(
                 "{} {}",
                 style("⚠️  WARNING").red().bold(),
                 style("This will permanently delete ALL vibe-workspace configuration!").red()
             );
-            println!();
+            display_println!();
 
             // Discover and show files that will be deleted
             let config_files = self.discover_all_config_files().await?;
 
             if !config_files.is_empty() {
-                println!("{} The following files will be deleted:", style("🗑️").red());
+                display_println!("{} The following files will be deleted:", style("🗑️").red());
                 for file in &config_files {
-                    println!("  {} {}", style("×").red(), style(file.display()).dim());
+                    display_println!("  {} {}", style("×").red(), style(file.display()).dim());
                 }
-                println!();
+                display_println!();
             }
 
             // Require typing exact confirmation
@@ -1935,7 +1953,7 @@ impl WorkspaceManager {
                 .context("Failed to get user confirmation")?;
 
             if confirmation != "reset my vibe" {
-                println!(
+                display_println!(
                     "{} Vibe Check: make sure you're ready for irreversable change and try again",
                     style("🔍").yellow()
                 );
@@ -1951,13 +1969,13 @@ impl WorkspaceManager {
                     .context("Failed to get final confirmation")?;
 
                 if !final_confirm {
-                    println!("{} Vibe Check: make sure you're ready for irreversable change and try again", style("🔍").yellow());
+                    display_println!("{} Vibe Check: make sure you're ready for irreversable change and try again", style("🔍").yellow());
                     return Ok(());
                 }
             }
         }
 
-        println!("{} Performing factory reset...", style("🔄").blue());
+        display_println!("{} Performing factory reset...", style("🔄").blue());
 
         // Clean up all app configuration files first
         self.cleanup_all_app_configs().await?;
@@ -1972,7 +1990,7 @@ impl WorkspaceManager {
                         self.config_path.display()
                     )
                 })?;
-            println!("{} Removed main configuration file", style("✓").green());
+            display_println!("{} Removed main configuration file", style("✓").green());
         }
 
         // Delete templates directory
@@ -1987,26 +2005,37 @@ impl WorkspaceManager {
                         templates_dir.display()
                     )
                 })?;
-            println!("{} Removed templates directory", style("✓").green());
+            display_println!("{} Removed templates directory", style("✓").green());
         }
 
-        println!("{} Factory reset completed", style("✅").green().bold());
-        println!();
+        // Delete cache directory
+        let cache_dir = vibe_dir.join("cache");
+        if cache_dir.exists() {
+            tokio::fs::remove_dir_all(&cache_dir)
+                .await
+                .with_context(|| {
+                    format!("Failed to remove cache directory: {}", cache_dir.display())
+                })?;
+            display_println!("{} Removed cache directory", style("✓").green());
+        }
 
-        // Reinitialize workspace
-        println!("{} Reinitializing workspace...", style("🚀").blue());
-        let workspace_name = "workspace".to_string();
-        let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        // Delete state.json file
+        let state_file = vibe_dir.join("state.json");
+        if state_file.exists() {
+            tokio::fs::remove_file(&state_file).await.with_context(|| {
+                format!("Failed to remove state file: {}", state_file.display())
+            })?;
+            display_println!("{} Removed state file", style("✓").green());
+        }
 
-        self.init_workspace(&workspace_name, &workspace_root)
-            .await?;
-
-        println!(
-            "{} Workspace reinitialized successfully",
-            style("✅").green().bold()
+        display_println!("{} Factory reset completed", style("✅").green().bold());
+        display_println!();
+        display_println!(
+            "{} All vibe configuration has been cleared.",
+            style("ℹ️").blue()
         );
-        println!(
-            "{} You can now configure repositories and apps",
+        display_println!(
+            "{} Run 'vibe' again to start the setup wizard.",
             style("💡").yellow()
         );
 
@@ -2072,6 +2101,44 @@ impl WorkspaceManager {
                     .await
                     .map(|output| output.status.success())
                     .unwrap_or(false)
+            }
+            "cursor" => {
+                // Check if Cursor is available
+                #[cfg(target_os = "macos")]
+                {
+                    tokio::fs::metadata("/Applications/Cursor.app")
+                        .await
+                        .is_ok()
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    // Try command line for other platforms
+                    tokio::process::Command::new("cursor")
+                        .arg("--version")
+                        .output()
+                        .await
+                        .map(|output| output.status.success())
+                        .unwrap_or(false)
+                }
+            }
+            "windsurf" => {
+                // Check if Windsurf is available
+                #[cfg(target_os = "macos")]
+                {
+                    tokio::fs::metadata("/Applications/Windsurf.app")
+                        .await
+                        .is_ok()
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    // Try command line for other platforms
+                    tokio::process::Command::new("windsurf")
+                        .arg("--version")
+                        .output()
+                        .await
+                        .map(|output| output.status.success())
+                        .unwrap_or(false)
+                }
             }
             _ => false,
         }
@@ -2650,7 +2717,7 @@ impl WorkspaceManager {
         let temp_config = WorkspaceConfig::load_from_file(&self.config_path).await?;
 
         // Restore each app type
-        for app_type in ["warp", "iterm2", "wezterm", "vscode"] {
+        for app_type in ["warp", "iterm2", "wezterm", "vscode", "cursor", "windsurf"] {
             let app_dir = app_configs_dir.join(app_type);
             if !app_dir.exists() {
                 continue;

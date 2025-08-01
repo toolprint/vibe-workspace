@@ -82,7 +82,8 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
         println!("It looks like this is your first time using Vibe.\n");
 
         if prompt_yes_no("Would you like to run the setup wizard?", true)? {
-            run_setup_wizard(workspace_manager).await?;
+            // Use the new enhanced setup wizard
+            crate::ui::setup_wizard::run_enhanced_setup_wizard(workspace_manager).await?;
 
             // Update state to mark wizard as complete
             let mut state = VibeState::load().unwrap_or_default();
@@ -1310,7 +1311,7 @@ async fn handle_smart_action(
 ) -> Result<()> {
     match action_type {
         SmartActionType::SetupWorkspace => {
-            run_setup_wizard(workspace_manager).await?;
+            crate::ui::setup_wizard::run_enhanced_setup_wizard(workspace_manager).await?;
         }
         SmartActionType::DiscoverRepos => {
             discover_repositories_interactive(workspace_manager).await?;
@@ -1529,7 +1530,7 @@ pub async fn run_setup_wizard(workspace_manager: &mut WorkspaceManager) -> Resul
         "\n{}",
         style("Step 2: Checking installed apps").yellow().bold()
     );
-    let available_apps = vec!["vscode", "warp", "iterm2", "wezterm"];
+    let available_apps = vec!["vscode", "warp", "iterm2", "wezterm", "cursor", "windsurf"];
     let mut has_apps = false;
 
     for app in &available_apps {
