@@ -1,10 +1,11 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use console::style;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use inquire::{InquireError, Select};
 use std::collections::HashMap;
 
 use crate::cache::{GitStatusCache, RepositoryCache};
+use crate::ui::formatting;
 use crate::ui::state::VibeState;
 use crate::workspace::{operations::GitStatus, WorkspaceManager};
 
@@ -23,7 +24,9 @@ pub struct LaunchItem {
     pub apps: Vec<String>,
     pub git_status: Option<GitStatus>,
     pub is_recent: bool,
-    pub recent_rank: Option<usize>, // 1-9 for recent repos
+    pub recent_rank: Option<usize>,    // 1-9 for recent repos
+    pub last_accessed: Option<String>, // Human-readable time for recent repos
+    pub last_app: Option<String>,      // Last used app for recent repos
 }
 
 impl QuickLauncher {
@@ -46,7 +49,7 @@ impl QuickLauncher {
     /// Launch the repository selection UI with fast cached data
     pub async fn launch(&self, workspace_manager: &mut WorkspaceManager) -> Result<()> {
         // Load cached repository data (fast)
-        let cached_repos = self.repo_cache.get_repositories_with_apps().await?;
+        let mut cached_repos = self.repo_cache.get_repositories_with_apps().await?;
 
         if cached_repos.is_empty() {
             println!("❌ No repositories with configured apps found in cache");
@@ -54,7 +57,7 @@ impl QuickLauncher {
 
             // Fallback: refresh cache from current config
             self.refresh_cache(workspace_manager).await?;
-            let cached_repos = self.repo_cache.get_repositories_with_apps().await?;
+            cached_repos = self.repo_cache.get_repositories_with_apps().await?;
 
             if cached_repos.is_empty() {
                 println!("❌ No repositories with configured apps found");
@@ -72,6 +75,15 @@ impl QuickLauncher {
             .map(|(i, repo)| (repo.repo_id.clone(), i + 1))
             .collect();
 
+        // Create a map for recent repo details (time, last app)
+        let recent_details: HashMap<String, (&crate::ui::state::RecentRepo, String)> = recent_repos
+            .iter()
+            .map(|repo| {
+                let time_ago = formatting::format_time_ago(&repo.last_accessed);
+                (repo.repo_id.clone(), (repo, time_ago))
+            })
+            .collect();
+
         // Load git status from cache (optional - don't block if missing)
         let git_statuses = self
             .git_cache
@@ -84,19 +96,29 @@ impl QuickLauncher {
             .collect();
 
         // Create launch items with all available information
-        let mut launch_items: Vec<LaunchItem> = cached_repos
+        let launch_items: Vec<LaunchItem> = cached_repos
             .into_iter()
             .map(|repo| {
                 let git_status = git_status_map.get(&repo.name).cloned();
                 let recent_rank = recent_names.get(&repo.name).cloned();
                 let is_recent = recent_rank.is_some();
 
-                // Create display string based on available information
-                let display_string = self.create_display_string(
+                // Get recent repo details if available
+                let (last_accessed, last_app) =
+                    if let Some((recent_repo, time_ago)) = recent_details.get(&repo.name) {
+                        (Some(time_ago.clone()), recent_repo.last_app.clone())
+                    } else {
+                        (None, None)
+                    };
+
+                // Create display string using shared formatting
+                let display_string = formatting::format_repository_launch_item(
                     &repo.name,
                     &repo.configured_apps,
                     git_status.as_ref(),
                     recent_rank,
+                    last_accessed.as_deref(),
+                    last_app.as_deref(),
                 );
 
                 LaunchItem {
@@ -106,50 +128,91 @@ impl QuickLauncher {
                     git_status,
                     is_recent,
                     recent_rank,
+                    last_accessed,
+                    last_app,
                 }
             })
             .collect();
 
-        // Sort: recent repos first (by rank), then alphabetically
-        launch_items.sort_by(|a, b| match (a.recent_rank, b.recent_rank) {
-            (Some(rank_a), Some(rank_b)) => rank_a.cmp(&rank_b),
-            (Some(_), None) => std::cmp::Ordering::Less,
-            (None, Some(_)) => std::cmp::Ordering::Greater,
-            (None, None) => a.name.cmp(&b.name),
-        });
+        // Separate recent and other repositories
+        let (recent_items, other_items): (Vec<_>, Vec<_>) = launch_items
+            .into_iter()
+            .partition(|item| item.recent_rank.is_some());
 
-        // Create display options
-        let display_options: Vec<String> = launch_items
-            .iter()
-            .map(|item| item.display_string.clone())
-            .collect();
+        // Sort recent items by rank, other items alphabetically
+        let mut recent_items = recent_items;
+        recent_items.sort_by(|a, b| a.recent_rank.cmp(&b.recent_rank));
+
+        let mut other_items = other_items;
+        other_items.sort_by(|a, b| a.name.cmp(&b.name));
+
+        // Create display options with section headers
+        let mut display_options = Vec::new();
+        let mut item_map = std::collections::HashMap::new();
+
+        // Add recent repositories section if any exist
+        if !recent_items.is_empty() {
+            display_options.push("🏃 ── Recent Repositories ──".to_string());
+            for item in &recent_items {
+                display_options.push(item.display_string.clone());
+                item_map.insert(item.display_string.clone(), item);
+            }
+        }
+
+        // Add all repositories section if there are non-recent ones
+        if !other_items.is_empty() {
+            if !recent_items.is_empty() {
+                display_options.push("📁 ── All Repositories ──".to_string());
+            }
+            for item in &other_items {
+                display_options.push(item.display_string.clone());
+                item_map.insert(item.display_string.clone(), item);
+            }
+        }
 
         // Show selection UI
         println!("\n🚀 Select a repository to open:");
-        println!("   {} repositories available", launch_items.len());
-        if !recent_names.is_empty() {
-            println!("   {} recent repositories shown first", recent_names.len());
+        println!(
+            "   {} repositories available",
+            recent_items.len() + other_items.len()
+        );
+        if !recent_items.is_empty() {
+            println!("   {} recent repositories", recent_items.len());
         }
 
-        let selected_display_result = Select::new("Repository:", display_options)
-            .with_help_message("Use arrow keys to navigate, type to filter • ESC to exit")
-            .with_page_size(workspace_manager.get_quick_launch_page_size())
-            .prompt();
+        // Selection loop to handle section headers
+        let selected_item = loop {
+            let selected_display_result = Select::new("Repository:", display_options.clone())
+                .with_help_message("Use arrow keys to navigate, type to filter • ESC to exit")
+                .with_page_size(workspace_manager.get_quick_launch_page_size())
+                .prompt();
 
-        let selected_display = match selected_display_result {
-            Ok(value) => value,
-            Err(InquireError::OperationCanceled) => {
-                println!("{} Repository selection cancelled", style("ℹ️").blue());
-                return Ok(());
+            let selected_display = match selected_display_result {
+                Ok(value) => value,
+                Err(InquireError::OperationCanceled) => {
+                    println!("{} Repository selection cancelled", style("ℹ️").blue());
+                    return Ok(());
+                }
+                Err(error) => return Err(anyhow::Error::from(error)),
+            };
+
+            // Handle section headers (ignore and re-prompt)
+            if selected_display.starts_with("🏃 ──") || selected_display.starts_with("📁 ──")
+            {
+                println!(
+                    "{} Section headers are not selectable. Please choose a repository.",
+                    style("ℹ️").blue()
+                );
+                continue;
             }
-            Err(error) => return Err(anyhow::Error::from(error)),
-        };
 
-        // Find the selected repository
-        let selected_item = launch_items
-            .iter()
-            .find(|item| item.display_string == selected_display)
-            .context("Selected repository not found")?;
+            // Find the selected repository
+            if let Some(selected_item) = item_map.get(&selected_display) {
+                break selected_item;
+            } else {
+                return Err(anyhow::anyhow!("Selected repository not found"));
+            }
+        };
 
         // Handle app selection and launch
         self.launch_repository(workspace_manager, selected_item)
@@ -217,72 +280,6 @@ impl QuickLauncher {
         );
 
         Ok(())
-    }
-
-    /// Create display string for repository based on available information
-    fn create_display_string(
-        &self,
-        name: &str,
-        apps: &[String],
-        git_status: Option<&GitStatus>,
-        recent_rank: Option<usize>,
-    ) -> String {
-        let mut parts = Vec::new();
-
-        // Add recent rank indicator
-        if let Some(rank) = recent_rank {
-            parts.push(format!("{}.", style(rank).cyan().bold()));
-        }
-
-        // Repository name - color by git status (red=no remote, yellow=changes, green=clean)
-        let name_style = if let Some(status) = git_status {
-            if status.remote_url.is_none() {
-                style(name).red().bold()
-            } else if !status.clean {
-                style(name).yellow().bold()
-            } else {
-                style(name).green().bold()
-            }
-        } else {
-            style(name).cyan().bold()
-        };
-        parts.push(name_style.to_string());
-
-        // Git status (if available and not clean)
-        if let Some(status) = git_status {
-            if !status.clean {
-                let mut indicators = Vec::new();
-                if status.staged > 0 {
-                    indicators.push(format!("{}S", status.staged));
-                }
-                if status.unstaged > 0 {
-                    indicators.push(format!("{}M", status.unstaged));
-                }
-                if status.untracked > 0 {
-                    indicators.push(format!("{}?", status.untracked));
-                }
-                if status.ahead > 0 {
-                    indicators.push(format!("↑{}", status.ahead));
-                }
-                if status.behind > 0 {
-                    indicators.push(format!("↓{}", status.behind));
-                }
-
-                if !indicators.is_empty() {
-                    parts.push(format!("[{}]", style(indicators.join(" ")).yellow()));
-                }
-            }
-
-            // Branch information
-            if let Some(ref branch) = status.branch {
-                parts.push(format!("on {}", style(branch).white().bold()));
-            }
-        }
-
-        // Apps
-        parts.push(format!("(apps: {})", style(apps.join(", ")).blue()));
-
-        parts.join(" ")
     }
 
     /// Refresh cache from workspace configuration

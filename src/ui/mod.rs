@@ -1,4 +1,5 @@
 pub mod display;
+pub mod formatting;
 pub mod hierarchical_display;
 pub mod prompts;
 pub mod quick_launcher;

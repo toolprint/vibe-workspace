@@ -283,6 +283,58 @@ impl WorkspaceConfig {
         self.repositories.iter().find(|repo| repo.name == name)
     }
 
+    /// Get a repository by flexible name lookup (supports owner/repo format)
+    pub fn get_repository_flexible(&self, name: &str) -> Option<&Repository> {
+        // First try exact match
+        if let Some(repo) = self.get_repository(name) {
+            return Some(repo);
+        }
+
+        // Try case-insensitive match
+        let lower_name = name.to_lowercase();
+        if let Some(repo) = self
+            .repositories
+            .iter()
+            .find(|repo| repo.name.to_lowercase() == lower_name)
+        {
+            return Some(repo);
+        }
+
+        // Try extracting repo name from owner/repo format
+        if let Some((_owner, repo_name)) = name.split_once('/') {
+            // Try exact match on repo name
+            if let Some(repo) = self.get_repository(repo_name) {
+                return Some(repo);
+            }
+
+            // Try case-insensitive match on repo name
+            let lower_repo_name = repo_name.to_lowercase();
+            if let Some(repo) = self
+                .repositories
+                .iter()
+                .find(|repo| repo.name.to_lowercase() == lower_repo_name)
+            {
+                return Some(repo);
+            }
+        }
+
+        // Try to match against URL if present
+        let lower_search = name.to_lowercase();
+        self.repositories.iter().find(|repo| {
+            if let Some(url) = &repo.url {
+                let lower_url = url.to_lowercase();
+                // Check if URL contains the search term (handles owner/repo in URLs)
+                lower_url.contains(&lower_search) ||
+                // Check if the last part of the URL path matches
+                lower_url.split('/').last()
+                    .map(|last| last.trim_end_matches(".git") == lower_search)
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        })
+    }
+
     pub fn get_repositories_in_group(&self, group_name: &str) -> Vec<&Repository> {
         if let Some(group) = self.groups.iter().find(|g| g.name == group_name) {
             group

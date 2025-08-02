@@ -33,6 +33,11 @@ pub fn get_backups_dir() -> PathBuf {
     get_config_dir().join("backups")
 }
 
+/// Get the cache directory path
+pub fn get_cache_dir() -> PathBuf {
+    get_config_dir().join("cache")
+}
+
 /// Get app-specific template directory path
 pub fn get_app_template_dir(app_name: &str) -> PathBuf {
     get_templates_dir().join(app_name)

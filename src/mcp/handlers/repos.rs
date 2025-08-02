@@ -21,105 +21,52 @@ impl VibeToolHandler for LaunchRepoTool {
     }
 
     fn tool_description(&self) -> &str {
-        "Quick launch recent repository or specific repository"
+        "Interactive recent repository selector (1-9)"
     }
 
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Repository name or number (1-9 for recent repos)"
-                },
-                "app": {
-                    "type": "string",
-                    "description": "App to open with (overrides default/last used)",
-                    "enum": ["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"]
-                }
-            },
+            "properties": {},
             "required": []
         })
     }
 
     async fn handle_call(
         &self,
-        args: Value,
-        workspace: Arc<Mutex<WorkspaceManager>>,
+        _args: Value,
+        _workspace: Arc<Mutex<WorkspaceManager>>,
     ) -> Result<Value> {
         // Load state to get recent repos
-        let mut state = VibeState::load().unwrap_or_default();
+        let state = VibeState::load().unwrap_or_default();
+        let recent_repos = state.get_recent_repos(9);
 
-        let repo_to_open = if let Some(repo_name) = args.get("repo").and_then(|v| v.as_str()) {
-            // Check if it's a number (1-9) for recent repos
-            if let Ok(num) = repo_name.parse::<usize>() {
-                if num >= 1 && num <= 9 {
-                    let recent_repos = state.get_recent_repos(15);
-                    if num <= recent_repos.len() {
-                        recent_repos[num - 1].repo_id.clone()
-                    } else {
-                        return Ok(json!({
-                            "status": "error",
-                            "message": format!("No recent repository at position {}", num)
-                        }));
-                    }
-                } else {
-                    repo_name.to_string()
-                }
-            } else {
-                repo_name.to_string()
-            }
-        } else {
-            // No repo specified, open the most recent one
-            let recent_repos = state.get_recent_repos(1);
-            if recent_repos.is_empty() {
-                return Ok(json!({
-                    "status": "error",
-                    "message": "No recent repositories found"
-                }));
-            }
-            recent_repos[0].repo_id.clone()
-        };
+        if recent_repos.is_empty() {
+            return Ok(json!({
+                "status": "empty",
+                "message": "No recent repositories found. Use the interactive menu with 'vibe' to browse repositories."
+            }));
+        }
 
-        let ws = workspace.lock().await;
-
-        // Get the repository info
-        let repo_info = ws
-            .get_repository(&repo_to_open)
-            .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_to_open))?;
-
-        // Determine which app to use
-        let app_to_use = if let Some(app_name) = args.get("app").and_then(|v| v.as_str()) {
-            app_name.to_string()
-        } else if let Some(last_app) = state.get_last_app(&repo_to_open) {
-            last_app.clone()
-        } else {
-            // Get configured apps and use first one
-            let apps = ws.list_apps_for_repo(&repo_to_open)?;
-            if apps.is_empty() {
-                return Ok(json!({
-                    "status": "error",
-                    "message": format!("No apps configured for repository '{}'", repo_to_open)
-                }));
-            }
-            apps[0].0.clone()
-        };
-
-        // Open the repository
-        ws.open_repo_with_app(&repo_to_open, &app_to_use).await?;
-
-        // Update state with this access
-        state.add_recent_repo(
-            repo_to_open.clone(),
-            repo_info.path.clone(),
-            Some(app_to_use.clone()),
-        );
-        state.save()?;
+        // Always return the recent options for user selection
+        let options: Vec<_> = recent_repos
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                json!({
+                    "number": index + 1,
+                    "repo": entry.repo_id,
+                    "path": entry.path.to_string_lossy(),
+                    "last_app": entry.last_app
+                })
+            })
+            .collect();
 
         Ok(json!({
             "status": "success",
-            "repository": repo_to_open,
-            "app": app_to_use
+            "message": "Recent repositories:",
+            "options": options,
+            "instruction": "Use 'open_repo' tool with a repository name to open one, or use the interactive menu."
         }))
     }
 }

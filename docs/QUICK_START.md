@@ -56,17 +56,15 @@ Once setup is complete, these are the quickest ways to work with your repositori
 # Launch the interactive menu
 vibe
 
-# Quick launch recent repositories by number (1-9)
-vibe launch 1    # Opens your most recent repository
-vibe launch 2    # Opens your second most recent repository
-vibe launch      # Opens your most recent repository (no number)
+# Interactive recent repository selector
+vibe launch      # Opens interactive selector with recent repositories (1-9)
 ```
 
 **Pro tip**: In the interactive menu, just press number keys `1-9` to instantly launch recent repositories!
 
 After setup, use these essential commands:
 ```bash
-vibe launch 1              # Quick launch recent repository
+vibe launch                # Interactive recent repository selector
 vibe create my-prototype   # Create new repository for prototyping
 vibe clone <github-url>    # Clone, configure, and open in one command
 vibe                       # Interactive menu with smart actions
@@ -195,11 +193,8 @@ vibe open my-repo
 # Open with specific app
 vibe open my-repo --app windsurf
 
-# Launch most recent repository
+# Interactive recent repository selector
 vibe launch
-
-# Launch by recent repository number
-vibe launch 3
 ```
 
 ## 📱 Supported Apps
@@ -252,10 +247,7 @@ vibe launch 1                 # Opens main-app instantly
 ### Daily Development Workflow
 ```bash
 # Morning: Launch your main project
-vibe launch 1
-
-# Switch to another project
-vibe launch 2
+vibe launch
 
 # Clone a new repository you need to work on
 vibe clone https://github.com/team/new-feature
@@ -285,10 +277,11 @@ vibe                          # Interactive menu with all projects
 
 1. **Number Shortcuts**: In the main menu, press `1-9` to instantly launch recent repositories
 2. **ESC Navigation**: Use ESC to go back in any menu or cancel any prompt
-3. **Quick Commands**: Use `vibe launch 1` from anywhere to open your most recent repository
+3. **Quick Commands**: Use `vibe launch` to access interactive recent repository selector
 4. **Smart Menu**: The menu shows different options based on your workspace state
 5. **Template System**: Customize how repositories open with templates in `~/.toolprint/vibe-workspace/templates/`
 6. **Recent History**: Your last 15 repositories are always accessible via quick launch
+7. **Consistent Formatting**: UI now uses unified color schemes - red (no remote), yellow (changes), green (clean)
 
 ## 🆘 Troubleshooting
 

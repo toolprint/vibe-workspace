@@ -12,9 +12,8 @@ The vibe CLI follows a hierarchical subcommand pattern:
 vibe [global-options] <command> [command-options]
 
 ├── (no command)                    → Menu mode
-├── init                           → Initialize workspace
 ├── menu                           → Enter interactive menu
-├── launch [repo] [--app]          → Quick launch repository
+├── launch                         → Interactive recent repository selector (1-9)
 ├── create [name] [--app] [--no-configure] [--no-open] → Create new local repository
 ├── clone <url> [--app] [--no-configure] [--no-open] → Clone, configure, and open in one command
 ├── setup [--skip]                → Run first-time setup wizard
@@ -55,9 +54,8 @@ Commands that directly perform actions (leaf nodes and commands with default act
 | Command | Action | Description |
 |---------|--------|-------------|
 | `vibe` | Menu mode | Launch smart interactive menu |
-| `vibe init` | Initialize workspace | Set up workspace in current directory |
 | `vibe menu` | Menu mode | Explicitly enter interactive menu |
-| `vibe launch [repo]` | Quick launch | Launch recent repo or specific repo by name/number |
+| `vibe launch` | Interactive launcher | Interactive recent repository selector (1-9) |
 | `vibe create [name]` | Create repository | Create new local repository for prototyping |
 | `vibe clone <url>` | Clone workflow | Clone, configure, and open repository |
 | `vibe setup` | Setup wizard | Run first-time workspace setup |
@@ -177,13 +175,14 @@ Setup Wizard → Repository Discovery → App Configuration → [Complete]
 
 #### 🏃 Quick Launch System
 **Entry Points**:
-- `vibe launch [repo|number]`
+- `vibe launch` - Interactive recent repository selector
 - Main menu number keys (1-9)
 - Quick Launch menu items
 
 **Flow**:
 - Load recent repositories from state
-- Launch by number (1-9) or name
+- Present interactive list with consistent formatting
+- Recent repos show time since last access and last-used app
 - Use last-used app or prompt for selection
 - Update access history and launch
 
@@ -234,7 +233,7 @@ The interactive menu dynamically shows relevant actions based on workspace state
 ### Entry Point Summary
 
 **CLI Direct Actions**:
-- `vibe launch` - Immediate repository launch
+- `vibe launch` - Interactive recent repository selector
 - `vibe create [name]` - Create new repository for prototyping
 - `vibe clone <url>` - Complete clone-to-open workflow
 - `vibe open <repo>` - Direct repository opening

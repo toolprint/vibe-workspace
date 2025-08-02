@@ -60,6 +60,40 @@ For Claude Desktop specifically, add this to your `claude_desktop_config.json` w
 
 ## Available Tools
 
+### launch_repo
+Interactive recent repository selector that shows available recent repositories for user selection.
+
+**Parameters:**
+- None - This tool provides an interactive selection interface
+
+**Example:**
+```json
+{}
+```
+
+**Response Example:**
+```json
+{
+  "status": "success",
+  "message": "Recent repositories:",
+  "options": [
+    {
+      "number": 1,
+      "repo": "my-repo",
+      "path": "/Users/dev/workspace/my-repo",
+      "last_app": "cursor"
+    }
+  ],
+  "instruction": "Use 'open_repo' tool with a repository name to open one, or use the interactive menu."
+}
+```
+
+**Features:**
+- Lists up to 9 most recent repositories
+- Shows last used app for each repository
+- Provides instructions for next steps
+- Returns empty status if no recent repositories found
+
 ### git_status
 Get git status for all repositories in the workspace.
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
-use chrono::{Duration, Utc};
 use std::path::PathBuf;
 
+use crate::ui::formatting;
 use crate::ui::state::VibeState;
 use crate::workspace::WorkspaceManager;
 
@@ -221,7 +221,7 @@ impl SmartMenu {
             .iter()
             .enumerate()
             .map(|(index, repo)| {
-                let time_ago = self.format_time_ago(&repo.last_accessed);
+                let time_ago = formatting::format_time_ago(&repo.last_accessed);
                 QuickLaunchItem {
                     number: index + 1,
                     repo_name: repo.repo_id.clone(),
@@ -237,31 +237,6 @@ impl SmartMenu {
     /// Check if setup wizard should be shown
     pub fn should_show_setup_wizard(&self) -> bool {
         self.user_state.is_first_run() && self.user_state.user_preferences.show_setup_wizard
-    }
-
-    /// Format a timestamp as human-readable time ago
-    fn format_time_ago(&self, timestamp: &chrono::DateTime<Utc>) -> String {
-        let now = Utc::now();
-        let duration = now.signed_duration_since(timestamp);
-
-        if duration < Duration::minutes(1) {
-            "just now".to_string()
-        } else if duration < Duration::hours(1) {
-            let mins = duration.num_minutes();
-            format!("{} min{} ago", mins, if mins == 1 { "" } else { "s" })
-        } else if duration < Duration::days(1) {
-            let hours = duration.num_hours();
-            format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
-        } else if duration < Duration::days(7) {
-            let days = duration.num_days();
-            format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
-        } else if duration < Duration::days(30) {
-            let weeks = duration.num_weeks();
-            format!("{} week{} ago", weeks, if weeks == 1 { "" } else { "s" })
-        } else {
-            let months = duration.num_days() / 30;
-            format!("{} month{} ago", months, if months == 1 { "" } else { "s" })
-        }
     }
 }
 

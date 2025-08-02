@@ -25,7 +25,7 @@ Vibe Workspace streamlines your development workflow by providing consistent env
 
 ## Platform Support
 
-Currently, **macOS is the only officially tested and supported platform**, with universal binaries available for both arm64 and amd64 architectures. 
+Currently, **macOS is the only officially tested and supported platform**, with universal binaries available for both arm64 and amd64 architectures.
 
 We cross-compile to Linux distributions, but full testing and support is not yet complete. Windows support is technically possible but not currently on the short-term roadmap unless highly requested by the community.
 
@@ -72,13 +72,15 @@ vibe
 ```
 
 The setup wizard will:
+
 1. **Discover repositories** in your workspace automatically
 2. **Check installed apps** (VS Code, Warp, iTerm2, WezTerm, Cursor, Windsurf)
 3. **Configure default app** for opening repositories
 
 After setup, use these essential commands:
+
 ```bash
-vibe launch 1              # Quick launch recent repository
+vibe launch                # Interactive recent repository selector
 vibe create my-prototype   # Create new repository for prototyping  
 vibe clone <github-url>    # Clone, configure, and open in one command
 vibe                       # Interactive menu with smart actions
@@ -119,11 +121,13 @@ Vibe stores its configuration and data in `~/.toolprint/vibe-workspace/`:
 ```
 
 **Key Configuration Files:**
+
 - `config.yaml` - Repository definitions, app settings, and workspace configuration
 - `state.json` - Recent repositories, user preferences, and setup completion status
 - `templates/` - Customizable templates for how apps open repositories
 
 Use these commands to manage configuration:
+
 ```bash
 vibe config show           # View current configuration
 vibe config edit           # Edit configuration file

@@ -5,6 +5,7 @@ use inquire::{Confirm, InquireError, MultiSelect, Select, Text};
 use std::path::PathBuf;
 
 use crate::git::{GitConfig, SearchCommand};
+use crate::ui::formatting;
 use crate::ui::smart_menu::{SmartActionType, SmartMenu};
 use crate::ui::state::VibeState;
 use crate::workspace::WorkspaceManager;
@@ -109,16 +110,12 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
             menu_options.push(format!("{}", style("🏃 ── Quick Launch ──").dim()));
 
             for item in &quick_items {
-                let label = format!(
-                    "{}. {} {} {}",
-                    style(item.number).cyan().bold(),
-                    style(&item.repo_name).green(),
-                    style(format!("({})", item.last_accessed)).dim(),
-                    if let Some(app) = &item.last_app {
-                        format!("→ {}", style(app).blue())
-                    } else {
-                        "".to_string()
-                    }
+                let label = formatting::format_repository_quick_launch(
+                    item.number,
+                    &item.repo_name,
+                    &item.last_accessed,
+                    item.last_app.as_deref(),
+                    None, // No git status available in main menu context
                 );
                 menu_options.push(label);
             }

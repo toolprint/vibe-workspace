@@ -56,17 +56,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize workspace configuration in current directory
-    Init {
-        /// Workspace name
-        #[arg(short, long)]
-        name: Option<String>,
-
-        /// Root directory for workspace
-        #[arg(short, long)]
-        root: Option<PathBuf>,
-    },
-
     /// Manage app integrations
     Apps {
         #[command(subcommand)]
@@ -106,6 +95,9 @@ enum Commands {
         command: GitCommands,
     },
 
+    /// Interactive recent repository selector (1-9)
+    Launch,
+
     /// Open repository with configured app
     Open {
         /// Repository name
@@ -118,17 +110,6 @@ enum Commands {
         /// Disable iTermocil for iTerm2 (use Dynamic Profiles instead)
         #[arg(long)]
         no_itermocil: bool,
-    },
-
-    /// Quick launch recent repository or specific repository
-    Launch {
-        /// Repository name or number (1-9 for recent repos)
-        #[arg(value_name = "REPO")]
-        repo: Option<String>,
-
-        /// App to open with (overrides default/last used)
-        #[arg(short, long)]
-        app: Option<String>,
     },
 
     /// Clone, configure, and open a repository in one command
@@ -167,17 +148,8 @@ enum Commands {
         stdio: bool,
     },
 
-    /// Show help for specific topics
-    Guide {
-        #[command(subcommand)]
-        topic: HelpTopic,
-    },
-}
-
-#[derive(Subcommand)]
-enum HelpTopic {
-    /// Getting started guide
-    GettingStarted,
+    /// Show getting started guide
+    Guide,
 }
 
 #[derive(Subcommand)]
@@ -484,28 +456,6 @@ async fn main() -> Result<()> {
             prompts::run_menu_mode(&mut workspace_manager).await?;
         }
         Some(command) => match command {
-            Commands::Init { name, root } => {
-                let workspace_name = name.unwrap_or_else(|| {
-                    std::env::current_dir()
-                        .ok()
-                        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-                        .unwrap_or_else(|| "workspace".to_string())
-                });
-
-                let workspace_root = root.unwrap_or_else(|| std::env::current_dir().unwrap());
-
-                workspace_manager
-                    .init_workspace(&workspace_name, &workspace_root)
-                    .await?;
-
-                display_println!(
-                    "{} Initialized workspace '{}' in {}",
-                    style("✓").green().bold(),
-                    style(&workspace_name).cyan().bold(),
-                    style(workspace_root.display()).dim()
-                );
-            }
-
             Commands::Apps { command } => match command {
                 AppsCommands::Configure {
                     repo,
@@ -872,39 +822,45 @@ async fn main() -> Result<()> {
                 app,
                 no_itermocil,
             } => {
+                // Find repository using flexible lookup
+                let repo_info = workspace_manager.get_repository_flexible(&repo)
+                    .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found. Try 'vibe launch' to see available repositories.", repo))?;
+
+                let repo_name = &repo_info.name;
+
                 if let Some(app_name) = app {
                     // Open with specific app
                     workspace_manager
-                        .open_repo_with_app_options(&repo, &app_name, no_itermocil)
+                        .open_repo_with_app_options(repo_name, &app_name, no_itermocil)
                         .await?;
                 } else {
                     // Open with default or show available apps
-                    let apps = workspace_manager.list_apps_for_repo(&repo)?;
+                    let apps = workspace_manager.list_apps_for_repo(repo_name)?;
                     if apps.is_empty() {
                         display_println!(
                         "{} No apps configured for repository '{}'. Configure with: vibe apps configure {} <app>",
                         style("⚠️").yellow(),
-                        style(&repo).cyan(),
-                        style(&repo).cyan()
+                        style(repo_name).cyan(),
+                        style(repo_name).cyan()
                     );
                     } else if apps.len() == 1 {
                         // Only one app configured, use it
                         let (app_name, _) = &apps[0];
                         workspace_manager
-                            .open_repo_with_app(&repo, app_name)
+                            .open_repo_with_app(repo_name, app_name)
                             .await?;
                     } else {
                         // Multiple apps configured, show options
                         display_println!(
                             "{} Multiple apps configured for '{}'. Please specify one:",
                             style("🤔").yellow(),
-                            style(&repo).cyan()
+                            style(repo_name).cyan()
                         );
                         for (app_name, _template) in &apps {
                             display_println!(
                                 "  {} vibe open {} --app {}",
                                 style("→").dim(),
-                                &repo,
+                                repo_name,
                                 style(app_name).green()
                             );
                         }
@@ -912,75 +868,11 @@ async fn main() -> Result<()> {
                 }
             }
 
-            Commands::Launch { repo, app } => {
-                // Load state to get recent repos
-                let mut state = VibeState::load().unwrap_or_default();
-
-                let repo_to_open = if let Some(repo_name) = repo {
-                    // Check if it's a number (1-9) for recent repos
-                    if let Ok(num) = repo_name.parse::<usize>() {
-                        if num >= 1 && num <= 9 {
-                            let recent_repos = state.get_recent_repos(15);
-                            if num <= recent_repos.len() {
-                                recent_repos[num - 1].repo_id.clone()
-                            } else {
-                                anyhow::bail!("No recent repository at position {}", num);
-                            }
-                        } else {
-                            repo_name
-                        }
-                    } else {
-                        repo_name
-                    }
-                } else {
-                    // No repo specified, open the most recent one
-                    let recent_repos = state.get_recent_repos(1);
-                    if recent_repos.is_empty() {
-                        anyhow::bail!(
-                            "No recent repositories found. Use 'vibe' to browse repositories."
-                        );
-                    }
-                    recent_repos[0].repo_id.clone()
-                };
-
-                // Get the repository info
-                let repo_info = workspace_manager
-                    .get_repository(&repo_to_open)
-                    .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_to_open))?;
-
-                // Determine which app to use
-                let app_to_use = if let Some(app_name) = app {
-                    app_name
-                } else if let Some(last_app) = state.get_last_app(&repo_to_open) {
-                    last_app.clone()
-                } else {
-                    // Get configured apps and use first one
-                    let apps = workspace_manager.list_apps_for_repo(&repo_to_open)?;
-                    if apps.is_empty() {
-                        anyhow::bail!("No apps configured for repository '{}'", repo_to_open);
-                    }
-                    apps[0].0.clone()
-                };
-
-                // Open the repository
-                workspace_manager
-                    .open_repo_with_app(&repo_to_open, &app_to_use)
-                    .await?;
-
-                // Update state with this access
-                state.add_recent_repo(
-                    repo_to_open.clone(),
-                    repo_info.path.clone(),
-                    Some(app_to_use.clone()),
-                );
-                state.save()?;
-
-                display_println!(
-                    "{} Launched {} with {}",
-                    style("🚀").green(),
-                    style(&repo_to_open).cyan().bold(),
-                    style(&app_to_use).blue()
-                );
+            Commands::Launch => {
+                // Use the QuickLauncher for interactive selection
+                let cache_dir = workspace::constants::get_cache_dir();
+                let launcher = ui::quick_launcher::QuickLauncher::new(&cache_dir).await?;
+                launcher.launch(&mut workspace_manager).await?;
             }
 
             Commands::Clone {
@@ -1074,11 +966,9 @@ async fn main() -> Result<()> {
                 }
             }
 
-            Commands::Guide { topic } => match topic {
-                HelpTopic::GettingStarted => {
-                    print_getting_started_guide();
-                }
-            },
+            Commands::Guide => {
+                print_getting_started_guide();
+            }
         },
     }
 
@@ -1104,7 +994,7 @@ fn print_getting_started_guide() {
     display_println!("2. {} - Run the setup wizard", style("vibe setup").cyan());
     display_println!(
         "3. {} - Clone and open a GitHub repo",
-        style("vibe go owner/repo").cyan()
+        style("vibe clone owner/repo").cyan()
     );
     display_println!();
 
@@ -1115,15 +1005,15 @@ fn print_getting_started_guide() {
     );
     display_println!(
         "  {} - Clone, configure, and open in one command",
-        style("vibe go <url>").cyan()
+        style("vibe clone <url>").cyan()
     );
     display_println!(
-        "  {} - Open a specific repository",
-        style("vibe launch <name>").cyan()
+        "  {} - Interactive recent repository selector (1-9)",
+        style("vibe launch").cyan()
     );
     display_println!(
-        "  {} - Quick open recent (use 1-9)",
-        style("vibe launch <number>").cyan()
+        "  {} - Open specific repository",
+        style("vibe open <repo>").cyan()
     );
     display_println!(
         "  {} - Open repository with specific app",
@@ -1171,6 +1061,10 @@ fn print_getting_started_guide() {
 
     display_println!("{}", style("Tips").yellow().bold());
     display_println!(
+        "• Run {} to see recent repositories for selection",
+        style("vibe launch").cyan()
+    );
+    display_println!(
         "• In the menu, press {} to quickly open recent repositories",
         style("1-9").cyan()
     );
@@ -1186,7 +1080,7 @@ fn print_getting_started_guide() {
     display_println!("1. Run {} to start exploring", style("vibe").cyan().bold());
     display_println!(
         "2. Clone your first repo with {}",
-        style("vibe go <owner/repo>").cyan()
+        style("vibe clone <owner/repo>").cyan()
     );
     display_println!("3. Configure your favorite apps");
     display_println!();

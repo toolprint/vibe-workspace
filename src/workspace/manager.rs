@@ -2050,6 +2050,11 @@ impl WorkspaceManager {
         self.config.get_repository(name)
     }
 
+    /// Get a repository by flexible name lookup (supports owner/repo format)
+    pub fn get_repository_flexible(&self, name: &str) -> Option<&Repository> {
+        self.config.get_repository_flexible(name)
+    }
+
     /// List all repositories
     pub fn list_repositories(&self) -> &[Repository] {
         &self.config.repositories
