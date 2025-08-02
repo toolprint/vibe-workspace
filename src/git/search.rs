@@ -5,7 +5,7 @@ use inquire::Text;
 
 use super::provider::{ProviderFactory, SearchProvider};
 use super::{GitConfig, Repository, SearchQuery};
-use crate::ui::workflows::{execute_workflow, CloneAndOpenWorkflow};
+use crate::ui::workflows::{execute_workflow, CloneWorkflow};
 use crate::workspace::manager::WorkspaceManager;
 
 pub struct SearchEngine {
@@ -127,7 +127,7 @@ impl SearchCommand {
 
         if let Some(repo) = selected_repo {
             // Use workflow system for seamless clone + configure + open experience
-            let workflow = CloneAndOpenWorkflow {
+            let workflow = CloneWorkflow {
                 url: repo.url.clone(),
                 app: None, // Let user choose during workflow
             };
@@ -263,7 +263,7 @@ impl SearchCommand {
 
         if let Some(repo) = selected_repo {
             // Use workflow system for complete clone + configure + open experience
-            let workflow = CloneAndOpenWorkflow {
+            let workflow = CloneWorkflow {
                 url: repo.url.clone(),
                 app: None, // User will be prompted to configure during workflow
             };

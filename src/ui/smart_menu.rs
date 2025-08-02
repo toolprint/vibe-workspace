@@ -18,6 +18,7 @@ pub struct SmartAction {
 pub enum SmartActionType {
     CloneAndOpen(String),       // URL or search term
     ConfigureApps(Vec<String>), // Repo names that need app configuration
+    CreateRepository,           // Create new local repository
     DiscoverRepos,              // Scan for new repositories
     InstallApps,                // Install missing apps
     OpenRecent(String),         // Repo name
@@ -188,12 +189,20 @@ impl SmartMenu {
             }
         }
 
+        // Create new repository action (always available)
+        actions.push(SmartAction {
+            label: "🆕 Create new repository".to_string(),
+            description: "Create a new local repository for prototyping".to_string(),
+            action_type: SmartActionType::CreateRepository,
+            priority: 35,
+        });
+
         // Clone new repo action (always available)
         actions.push(SmartAction {
             label: "📥 Clone new repository".to_string(),
             description: "Search and clone from GitHub".to_string(),
             action_type: SmartActionType::CloneAndOpen("".to_string()),
-            priority: 40,
+            priority: 30,
         });
 
         // Sort by priority (highest first)

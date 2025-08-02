@@ -14,6 +14,7 @@ mod cache;
 mod git;
 mod mcp;
 mod output;
+mod repository;
 mod ui;
 mod uri;
 mod utils;
@@ -31,9 +32,9 @@ use workspace::WorkspaceManager;
                   GETTING STARTED:\n  \
                   1. Run 'vibe' to start the interactive menu\n  \
                   2. Or run 'vibe setup' for first-time configuration\n  \
-                  3. Clone repos with 'vibe go owner/repo'\n  \
+                  3. Clone repos with 'vibe clone owner/repo'\n  \
                   4. Open repos with 'vibe launch [name]'\n\n\
-                  For detailed help: vibe help getting-started"
+                  For detailed help: vibe guide getting-started"
 )]
 #[command(version)]
 struct Cli {
@@ -75,6 +76,24 @@ enum Commands {
     /// Interactive menu system
     Menu,
 
+    /// Create a new repository in the workspace
+    Create {
+        /// Repository name
+        name: Option<String>,
+
+        /// App to open with after creating
+        #[arg(short, long)]
+        app: Option<String>,
+
+        /// Skip app configuration
+        #[arg(long)]
+        no_configure: bool,
+
+        /// Skip opening after create
+        #[arg(long)]
+        no_open: bool,
+    },
+
     /// Manage workspace configuration
     Config {
         #[command(subcommand)]
@@ -113,7 +132,7 @@ enum Commands {
     },
 
     /// Clone, configure, and open a repository in one command
-    Go {
+    Clone {
         /// Repository URL or GitHub shorthand (owner/repo)
         url: String,
 
@@ -149,7 +168,7 @@ enum Commands {
     },
 
     /// Show help for specific topics
-    Help {
+    Guide {
         #[command(subcommand)]
         topic: HelpTopic,
     },
@@ -642,6 +661,25 @@ async fn main() -> Result<()> {
                 prompts::run_menu_mode(&mut workspace_manager).await?;
             }
 
+            Commands::Create {
+                name,
+                app,
+                no_configure,
+                no_open,
+            } => {
+                use ui::workflows::{execute_workflow, CreateRepositoryWorkflow};
+
+                // Use workflow system for repository creation
+                let workflow = Box::new(CreateRepositoryWorkflow {
+                    suggested_name: name,
+                    app,
+                    skip_configure: no_configure,
+                    skip_open: no_open,
+                });
+
+                execute_workflow(workflow, &mut workspace_manager).await?;
+            }
+
             Commands::Config { command } => match command {
                 ConfigCommands::Init {
                     name,
@@ -945,17 +983,17 @@ async fn main() -> Result<()> {
                 );
             }
 
-            Commands::Go {
+            Commands::Clone {
                 url,
                 app,
                 no_configure,
                 no_open,
             } => {
-                use ui::workflows::{execute_workflow, CloneAndOpenWorkflow};
+                use ui::workflows::{execute_workflow, CloneWorkflow};
 
                 // Use workflow system if not skipping steps
                 if !no_configure || !no_open {
-                    let workflow = Box::new(CloneAndOpenWorkflow {
+                    let workflow = Box::new(CloneWorkflow {
                         url: url.clone(),
                         app: app.clone(),
                     });
@@ -1036,7 +1074,7 @@ async fn main() -> Result<()> {
                 }
             }
 
-            Commands::Help { topic } => match topic {
+            Commands::Guide { topic } => match topic {
                 HelpTopic::GettingStarted => {
                     print_getting_started_guide();
                 }

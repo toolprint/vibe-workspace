@@ -32,12 +32,12 @@ pub trait Workflow: Send + Sync {
 }
 
 /// Clone and open workflow
-pub struct CloneAndOpenWorkflow {
+pub struct CloneWorkflow {
     pub url: String,
     pub app: Option<String>,
 }
 
-impl Workflow for CloneAndOpenWorkflow {
+impl Workflow for CloneWorkflow {
     fn execute<'a>(
         &'a self,
         manager: &'a mut WorkspaceManager,
@@ -314,6 +314,219 @@ impl Workflow for ConfigureDefaultAppWorkflow {
     }
 }
 
+/// Create repository workflow
+pub struct CreateRepositoryWorkflow {
+    pub suggested_name: Option<String>,
+    pub app: Option<String>,
+    pub skip_configure: bool,
+    pub skip_open: bool,
+}
+
+impl Workflow for CreateRepositoryWorkflow {
+    fn execute<'a>(
+        &'a self,
+        manager: &'a mut WorkspaceManager,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<NextAction>> + Send + 'a>> {
+        Box::pin(async move {
+            use crate::repository::RepositoryCreator;
+            use inquire::{Select, Text};
+
+            display_println!("{} Creating new repository...", style("🆕").blue());
+
+            // Initialize repository creator
+            let workspace_root = manager.get_workspace_root().clone();
+            let creator = RepositoryCreator::new(workspace_root);
+
+            // Get GitHub user info
+            let user_info = match creator.get_github_user_info().await {
+                Ok(info) => info,
+                Err(e) => {
+                    display_println!(
+                        "{} Warning: Could not get GitHub info: {}",
+                        style("⚠️").yellow(),
+                        e
+                    );
+                    display_println!(
+                        "{} Continuing without GitHub integration...",
+                        style("ℹ️").blue()
+                    );
+                    // Continue without GitHub integration
+                    return self
+                        .create_without_github_integration(manager, &creator)
+                        .await;
+                }
+            };
+
+            // Show available owners (user + organizations)
+            let mut owners = vec![user_info.username.clone()];
+            owners.extend(user_info.organizations.iter().map(|org| org.login.clone()));
+
+            let selected_owner = if owners.len() == 1 {
+                owners[0].clone()
+            } else {
+                display_println!("\n{} Select repository owner:", style("👤").blue());
+
+                let owner_choices: Vec<String> = owners
+                    .iter()
+                    .map(|owner| {
+                        if owner == &user_info.username {
+                            format!("{} (personal)", owner)
+                        } else {
+                            format!("{} (organization)", owner)
+                        }
+                    })
+                    .collect();
+
+                let selected_display = Select::new("Repository owner:", owner_choices).prompt()?;
+
+                // Extract owner name from display
+                selected_display.split(" (").next().unwrap().to_string()
+            };
+
+            // Get repository name
+            let repo_name = if let Some(name) = &self.suggested_name {
+                name.clone()
+            } else {
+                Text::new("Repository name:").prompt()?
+            };
+
+            // Validate repository name
+            if let Err(e) = creator.validate_repository_name(&repo_name) {
+                display_println!("{} Invalid repository name: {}", style("❌").red(), e);
+                return Ok(NextAction::Complete);
+            }
+
+            // Check if repository already exists on GitHub
+            match creator
+                .check_repository_availability(&selected_owner, &repo_name)
+                .await
+            {
+                Ok(false) => {
+                    display_println!(
+                        "{} Repository {}/{} already exists on GitHub!",
+                        style("⚠️").yellow(),
+                        selected_owner,
+                        repo_name
+                    );
+                    display_println!(
+                        "{} You can still create it locally, but you won't be able to push to GitHub with this name.",
+                        style("ℹ️").blue()
+                    );
+                }
+                Ok(true) => {
+                    display_println!(
+                        "{} Repository name is available on GitHub",
+                        style("✅").green()
+                    );
+                }
+                Err(e) => {
+                    display_println!(
+                        "{} Could not check GitHub availability: {}",
+                        style("⚠️").yellow(),
+                        e
+                    );
+                }
+            }
+
+            // Create the local repository
+            match creator
+                .create_local_repository(&selected_owner, &repo_name, manager)
+                .await
+            {
+                Ok(_path) => {
+                    // Check if we should skip configuration and/or opening
+                    if self.skip_configure && self.skip_open {
+                        // Skip both - workflow complete
+                        Ok(NextAction::Complete)
+                    } else if self.skip_configure {
+                        // Skip configuration but still open
+                        Ok(NextAction::Continue(Box::new(OpenRepositoryWorkflow {
+                            repo_name: repo_name.clone(),
+                            preferred_app: self.app.clone(),
+                        })))
+                    } else {
+                        // Continue to app configuration (which will handle opening)
+                        Ok(NextAction::Continue(Box::new(ConfigureAppWorkflow {
+                            repo_name: repo_name.clone(),
+                            suggested_app: self.app.clone(),
+                            open_after: !self.skip_open,
+                        })))
+                    }
+                }
+                Err(e) => {
+                    display_println!("{} Failed to create repository: {}", style("❌").red(), e);
+                    Ok(NextAction::Complete)
+                }
+            }
+        })
+    }
+
+    fn description(&self) -> String {
+        if let Some(name) = &self.suggested_name {
+            format!("Create repository '{}'", name)
+        } else {
+            "Create new repository".to_string()
+        }
+    }
+}
+
+impl CreateRepositoryWorkflow {
+    async fn create_without_github_integration(
+        &self,
+        manager: &mut WorkspaceManager,
+        creator: &crate::repository::RepositoryCreator,
+    ) -> Result<NextAction> {
+        use inquire::Text;
+
+        // Fallback: use current user as owner
+        let current_user = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+
+        // Get repository name
+        let repo_name = if let Some(name) = &self.suggested_name {
+            name.clone()
+        } else {
+            Text::new("Repository name:").prompt()?
+        };
+
+        // Validate repository name
+        if let Err(e) = creator.validate_repository_name(&repo_name) {
+            display_println!("{} Invalid repository name: {}", style("❌").red(), e);
+            return Ok(NextAction::Complete);
+        }
+
+        // Create the local repository
+        match creator
+            .create_local_repository(&current_user, &repo_name, manager)
+            .await
+        {
+            Ok(_path) => {
+                // Check if we should skip configuration and/or opening
+                if self.skip_configure && self.skip_open {
+                    // Skip both - workflow complete
+                    Ok(NextAction::Complete)
+                } else if self.skip_configure {
+                    // Skip configuration but still open
+                    Ok(NextAction::Continue(Box::new(OpenRepositoryWorkflow {
+                        repo_name: repo_name.clone(),
+                        preferred_app: self.app.clone(),
+                    })))
+                } else {
+                    // Continue to app configuration (which will handle opening)
+                    Ok(NextAction::Continue(Box::new(ConfigureAppWorkflow {
+                        repo_name: repo_name.clone(),
+                        suggested_app: self.app.clone(),
+                        open_after: !self.skip_open,
+                    })))
+                }
+            }
+            Err(e) => {
+                display_println!("{} Failed to create repository: {}", style("❌").red(), e);
+                Ok(NextAction::Complete)
+            }
+        }
+    }
+}
+
 /// Execute a workflow and handle continuations
 pub async fn execute_workflow(
     workflow: Box<dyn Workflow + Send + Sync>,
@@ -356,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_workflow_description() {
-        let workflow = CloneAndOpenWorkflow {
+        let workflow = CloneWorkflow {
             url: "https://github.com/user/repo".to_string(),
             app: Some("vscode".to_string()),
         };

@@ -15,7 +15,8 @@ vibe [global-options] <command> [command-options]
 ├── init                           → Initialize workspace
 ├── menu                           → Enter interactive menu
 ├── launch [repo] [--app]          → Quick launch repository
-├── go <url> [--app]              → Clone, configure, and open in one command
+├── create [name] [--app] [--no-configure] [--no-open] → Create new local repository
+├── clone <url> [--app] [--no-configure] [--no-open] → Clone, configure, and open in one command
 ├── setup [--skip]                → Run first-time setup wizard
 ├── mcp [--stdio] [--port]        → Run as MCP server (--port coming soon)
 ├── open <repo> [--app]           → Open repository with app
@@ -57,7 +58,8 @@ Commands that directly perform actions (leaf nodes and commands with default act
 | `vibe init` | Initialize workspace | Set up workspace in current directory |
 | `vibe menu` | Menu mode | Explicitly enter interactive menu |
 | `vibe launch [repo]` | Quick launch | Launch recent repo or specific repo by name/number |
-| `vibe go <url>` | Clone workflow | Clone, configure, and open repository |
+| `vibe create [name]` | Create repository | Create new local repository for prototyping |
+| `vibe clone <url>` | Clone workflow | Clone, configure, and open repository |
 | `vibe setup` | Setup wizard | Run first-time workspace setup |
 | `vibe mcp --stdio` | MCP server | Run as Model Context Protocol server (--port coming soon) |
 | `vibe open <repo>` | Open repository | Open repo with configured app |
@@ -133,14 +135,30 @@ Setup Wizard → Repository Discovery → App Configuration → [Complete]
 
 ### Workflow Descriptions
 
-#### Clone and Open Workflow
+#### Create Repository Workflow
 **Entry Points**: 
-- `vibe go <url>`
+- `vibe create [name]` - Create new repository
+- `vibe create [name] --app <app>` - Create and open with specific app
+- `vibe create [name] --no-configure` - Skip app configuration
+- `vibe create [name] --no-open` - Skip opening after create
+- Smart Action: "Create new repository"
+
+**Flow**:
+1. **CreateRepositoryWorkflow** - Gather repository details (name, owner)
+2. GitHub integration - Detect organizations and validate name availability
+3. Create local repository with default templates
+4. **ConfigureAppWorkflow** - Prompt to configure apps (skipped with `--no-configure`)
+5. **OpenRepositoryWorkflow** - Open repository with configured app (skipped with `--no-open`)
+6. **Complete** - Repository ready for development
+
+#### Clone Repository Workflow
+**Entry Points**: 
+- `vibe clone <url>`
 - Smart Action: "Clone & Open"
 - Menu: "Search & clone from GitHub"
 
 **Flow**:
-1. **CloneAndOpenWorkflow** - Clone repository to workspace
+1. **CloneWorkflow** - Clone repository to workspace
 2. **ConfigureAppWorkflow** - Prompt to configure apps (VS Code, iTerm2, Warp, etc.)
 3. **OpenRepositoryWorkflow** - Open repository with configured app
 4. **Complete** - Show suggestions for next actions
@@ -181,6 +199,7 @@ The interactive menu dynamically shows relevant actions based on workspace state
 | Missing repositories | "Cleanup Missing Repos" | Remove non-existent repos from config |
 | Apps not installed | "Install Apps" | Interactive app installer |
 | Long since sync | "Sync Repositories" | Update all repositories |
+| Always available | "Create new repository" | Quick create for prototyping |
 | Always available | "Clone & Open" | Search GitHub and clone |
 
 ### Menu State Management
@@ -207,7 +226,7 @@ The interactive menu dynamically shows relevant actions based on workspace state
 3. **Visual Navigation Cues**: All menus include visual separators and [Back]/[Exit] options
 4. **Workflow Continuity**: Actions flow seamlessly (clone → configure → open)
 5. **Context Awareness**: Menu adapts based on workspace state and user history
-6. **Quick Commands**: Single commands for common workflows (`vibe go`, `vibe launch`)
+6. **Quick Commands**: Single commands for common workflows (`vibe create`, `vibe clone`, `vibe launch`)
 7. **Smart Defaults**: Remembers last-used apps and preferences
 8. **Progressive Setup**: First-time users get guided setup experience
 9. **Help Messages**: All prompts include contextual help with ESC instructions
@@ -216,7 +235,8 @@ The interactive menu dynamically shows relevant actions based on workspace state
 
 **CLI Direct Actions**:
 - `vibe launch` - Immediate repository launch
-- `vibe go <url>` - Complete clone-to-open workflow
+- `vibe create [name]` - Create new repository for prototyping
+- `vibe clone <url>` - Complete clone-to-open workflow
 - `vibe open <repo>` - Direct repository opening
 - `vibe apps configure` - Direct app configuration
 

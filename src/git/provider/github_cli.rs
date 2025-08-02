@@ -49,6 +49,69 @@ impl GitHubCliProvider {
         Ok(Self { gh_path, config })
     }
 
+    /// Get the currently authenticated GitHub username
+    pub async fn get_username(&self) -> Result<String> {
+        let output = Command::new(&self.gh_path)
+            .args(&["api", "user", "--jq", ".login"])
+            .output()
+            .await
+            .context("Failed to get GitHub username")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to get GitHub username: {}", error_msg);
+        }
+
+        let username = String::from_utf8(output.stdout)
+            .context("Invalid UTF-8 in username response")?
+            .trim()
+            .to_string();
+
+        if username.is_empty() {
+            anyhow::bail!("No GitHub username found. Please authenticate with 'gh auth login'");
+        }
+
+        Ok(username)
+    }
+
+    /// Get the organizations the authenticated user belongs to
+    pub async fn get_user_organizations(&self) -> Result<Vec<String>> {
+        let output = Command::new(&self.gh_path)
+            .args(&["api", "user/orgs", "--jq", ".[].login"])
+            .output()
+            .await
+            .context("Failed to get GitHub organizations")?;
+
+        if !output.status.success() {
+            // Organizations query might fail if user has no orgs, which is fine
+            return Ok(Vec::new());
+        }
+
+        let orgs_output =
+            String::from_utf8(output.stdout).context("Invalid UTF-8 in organizations response")?;
+
+        let organizations = orgs_output
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|login| login.trim().to_string())
+            .collect();
+
+        Ok(organizations)
+    }
+
+    /// Check if a repository exists for the given owner and name
+    pub async fn repository_exists(&self, owner: &str, repo_name: &str) -> Result<bool> {
+        let output = Command::new(&self.gh_path)
+            .args(&["api", &format!("repos/{}/{}", owner, repo_name)])
+            .output()
+            .await
+            .context("Failed to check repository existence")?;
+
+        // If the repository exists, the command will succeed
+        // If it doesn't exist, it will fail with 404
+        Ok(output.status.success())
+    }
+
     async fn parse_search_results(&self, output: &[u8]) -> Result<Vec<Repository>> {
         #[derive(Deserialize)]
         struct SearchResult {

@@ -69,7 +69,7 @@ impl VibeToolHandler for ValidateMcpInterfaceTool {
             // Repository tools
             ("launch_repo", "vibe launch"),
             ("open_repo", "vibe open"),
-            ("clone_and_open", "vibe go"),
+            ("clone", "vibe clone"),
             // Git operation tools
             ("vibe_git_status", "vibe git status"),
             ("scan_repos", "vibe git scan"),
@@ -105,7 +105,7 @@ impl VibeToolHandler for ValidateMcpInterfaceTool {
             // Repository operation tools
             .with_tool(Arc::new(handlers::LaunchRepoTool))
             .with_tool(Arc::new(handlers::OpenRepoTool))
-            .with_tool(Arc::new(handlers::CloneAndOpenTool))
+            .with_tool(Arc::new(handlers::CloneTool))
             // Git operation tools
             .with_tool(Arc::new(handlers::GitStatusTool))
             .with_tool(Arc::new(handlers::ScanReposTool))

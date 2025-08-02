@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::mcp::types::VibeToolHandler;
 use crate::ui::state::VibeState;
-use crate::ui::workflows::{execute_workflow, CloneAndOpenWorkflow};
+use crate::ui::workflows::{execute_workflow, CloneWorkflow};
 use crate::workspace::WorkspaceManager;
 
 /// MCP tool for launching a repository
@@ -229,12 +229,12 @@ impl VibeToolHandler for OpenRepoTool {
 }
 
 /// MCP tool for cloning and opening a repository
-pub struct CloneAndOpenTool;
+pub struct CloneTool;
 
 #[async_trait]
-impl VibeToolHandler for CloneAndOpenTool {
+impl VibeToolHandler for CloneTool {
     fn tool_name(&self) -> &str {
-        "clone_and_open"
+        "clone"
     }
 
     fn tool_description(&self) -> &str {
@@ -291,7 +291,7 @@ impl VibeToolHandler for CloneAndOpenTool {
 
         // Use workflow system if not skipping steps
         if !no_configure || !no_open {
-            let workflow = Box::new(CloneAndOpenWorkflow {
+            let workflow = Box::new(CloneWorkflow {
                 url: url.to_string(),
                 app,
             });
@@ -321,6 +321,160 @@ impl VibeToolHandler for CloneAndOpenTool {
                 "status": "success",
                 "message": "Repository cloned successfully",
                 "path": cloned_path.to_string_lossy()
+            }))
+        }
+    }
+}
+
+/// MCP tool for creating a new repository
+pub struct CreateRepositoryTool;
+
+#[async_trait]
+impl VibeToolHandler for CreateRepositoryTool {
+    fn tool_name(&self) -> &str {
+        "create_repository"
+    }
+
+    fn tool_description(&self) -> &str {
+        "Create a new local repository in the workspace"
+    }
+
+    fn input_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Repository name (optional - will prompt if not provided)"
+                },
+                "owner": {
+                    "type": "string",
+                    "description": "Repository owner (GitHub username or org - will detect if not provided)"
+                },
+                "app": {
+                    "type": "string",
+                    "description": "App to configure and open with after creation",
+                    "enum": ["warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"]
+                },
+                "skip_github_check": {
+                    "type": "boolean",
+                    "description": "Skip GitHub availability check",
+                    "default": false
+                },
+                "no_configure": {
+                    "type": "boolean",
+                    "description": "Skip app configuration",
+                    "default": false
+                },
+                "no_open": {
+                    "type": "boolean",
+                    "description": "Skip opening after create",
+                    "default": false
+                }
+            }
+        })
+    }
+
+    async fn handle_call(
+        &self,
+        args: Value,
+        workspace: Arc<Mutex<WorkspaceManager>>,
+    ) -> Result<Value> {
+        use crate::repository::RepositoryCreator;
+
+        let suggested_name = args.get("name").and_then(|v| v.as_str()).map(String::from);
+        let suggested_owner = args.get("owner").and_then(|v| v.as_str()).map(String::from);
+        let suggested_app = args.get("app").and_then(|v| v.as_str()).map(String::from);
+        let skip_github_check = args
+            .get("skip_github_check")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let no_configure = args
+            .get("no_configure")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let no_open = args
+            .get("no_open")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let mut ws = workspace.lock().await;
+        let workspace_root = ws.get_workspace_root().clone();
+        let creator = RepositoryCreator::new(workspace_root);
+
+        // Get GitHub user info if not skipping
+        let (owner, repo_name) = if skip_github_check {
+            let owner = suggested_owner
+                .unwrap_or_else(|| std::env::var("USER").unwrap_or_else(|_| "user".to_string()));
+            let name = suggested_name.ok_or_else(|| {
+                anyhow::anyhow!("Repository name is required when skipping GitHub check")
+            })?;
+            (owner, name)
+        } else {
+            let user_info = creator.get_github_user_info().await.map_err(|e| {
+                anyhow::anyhow!("Failed to get GitHub info. Use skip_github_check=true to continue without GitHub: {}", e)
+            })?;
+
+            let owner = suggested_owner.unwrap_or(user_info.username);
+            let name =
+                suggested_name.ok_or_else(|| anyhow::anyhow!("Repository name is required"))?;
+
+            // Validate repository name
+            creator.validate_repository_name(&name)?;
+
+            // Check availability unless skipped
+            let available = creator.check_repository_availability(&owner, &name).await?;
+            if !available {
+                return Ok(json!({
+                    "status": "warning",
+                    "message": format!("Repository {}/{} already exists on GitHub. Created locally anyway.", owner, name),
+                    "github_exists": true
+                }));
+            }
+
+            (owner, name)
+        };
+
+        // Create the repository
+        let repo_path = creator
+            .create_local_repository(&owner, &repo_name, &mut *ws)
+            .await?;
+
+        // Configure and open based on parameters
+        if let Some(app) = suggested_app {
+            if !no_configure {
+                ws.configure_app_for_repo(&repo_name, &app, "default")
+                    .await?;
+            }
+
+            if !no_open {
+                // Open the repository
+                ws.open_repo_with_app(&repo_name, &app).await?;
+            }
+
+            let message = match (no_configure, no_open) {
+                (true, true) => "Repository created successfully",
+                (true, false) => "Repository created and opened successfully",
+                (false, true) => "Repository created and configured successfully",
+                (false, false) => "Repository created, configured, and opened successfully",
+            };
+
+            Ok(json!({
+                "status": "success",
+                "message": message,
+                "repository": repo_name,
+                "owner": owner,
+                "path": repo_path.to_string_lossy(),
+                "app": app
+            }))
+        } else {
+            Ok(json!({
+                "status": "success",
+                "message": "Repository created successfully",
+                "repository": repo_name,
+                "owner": owner,
+                "path": repo_path.to_string_lossy(),
+                "note": "Use apps configure or open commands to set up development environment"
             }))
         }
     }

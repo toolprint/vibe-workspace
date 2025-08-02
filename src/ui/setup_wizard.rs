@@ -204,7 +204,7 @@ async fn run_fresh_start_workflow(workspace_manager: &mut WorkspaceManager) -> R
     display_println!(
         "  {} {} - Clone and set up any GitHub repository",
         style("•").dim(),
-        style("vibe go owner/repo").cyan()
+        style("vibe clone owner/repo").cyan()
     );
     display_println!(
         "  {} {} - Search GitHub for repositories",
@@ -569,7 +569,7 @@ fn show_next_steps() {
     display_println!(
         "  {} {} - Clone and open a GitHub repo",
         style("•").dim(),
-        style("vibe go owner/repo").cyan()
+        style("vibe clone owner/repo").cyan()
     );
     display_println!(
         "  {} {} - Quick open recent (in menu)",
@@ -585,7 +585,7 @@ fn show_next_steps() {
     display_println!("\n{} Next steps:", style("💡").yellow());
     display_println!(
         "  1. Clone a repository: {}",
-        style("vibe go <owner/repo>").cyan()
+        style("vibe clone <owner/repo>").cyan()
     );
     display_println!(
         "  2. Or run {} to explore all features",
@@ -594,7 +594,7 @@ fn show_next_steps() {
 
     display_println!(
         "\nFor more help: {}",
-        style("vibe help getting-started").dim()
+        style("vibe guide getting-started").dim()
     );
     display_println!("\nEnjoy using Vibe! 🚀");
 }

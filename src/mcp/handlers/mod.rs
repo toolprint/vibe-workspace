@@ -21,7 +21,7 @@ pub use apps::{
 };
 
 // Repository operation handlers
-pub use repos::{CloneAndOpenTool, LaunchRepoTool, OpenRepoTool};
+pub use repos::{CloneTool, CreateRepositoryTool, LaunchRepoTool, OpenRepoTool};
 
 // Git operation handlers
 pub use git::{

@@ -94,6 +94,80 @@ Get git status for all repositories in the workspace.
 }
 ```
 
+### create_repository
+Create a new local repository in the workspace with development-ready templates.
+
+**Parameters:**
+- `name` (string, optional): Repository name - will prompt interactively if not provided
+- `owner` (string, optional): Repository owner (GitHub username or org) - will auto-detect if not provided
+- `app` (string, optional): App to configure and open with after creation - one of: "warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"
+- `skip_github_check` (boolean, optional): Skip GitHub availability check - defaults to false
+- `no_configure` (boolean, optional): Skip app configuration - defaults to false
+- `no_open` (boolean, optional): Skip opening after create - defaults to false
+
+**Example:**
+```json
+{
+  "name": "my-prototype",
+  "owner": "myorg",
+  "app": "cursor"
+}
+```
+
+**Example with skip flags:**
+```json
+{
+  "name": "my-prototype",
+  "app": "vscode",
+  "no_configure": true,
+  "no_open": true
+}
+```
+
+**Response Example:**
+```json
+{
+  "status": "success",
+  "repository": "my-prototype",
+  "owner": "myorg",
+  "path": "/Users/dev/workspace/myorg/my-prototype",
+  "app": "cursor",
+  "message": "Repository created, configured, and opened successfully"
+}
+```
+
+**Features:**
+- GitHub organization detection via GitHub CLI
+- Repository name validation for GitHub compatibility
+- Default development templates (README, .gitignore, src/, docs/TODO.md)
+- Automatic git initialization with initial commit
+- Seamless app configuration and launch
+
+### clone
+Clone, configure, and open an existing repository in one command.
+
+**Parameters:**
+- `url` (string, required): Repository URL or GitHub shorthand (owner/repo)
+- `app` (string, optional): App to open with after cloning - one of: "warp", "iterm2", "vscode", "wezterm", "cursor", "windsurf"
+- `no_configure` (boolean, optional): Skip app configuration - defaults to false
+- `no_open` (boolean, optional): Skip opening after clone - defaults to false
+
+**Example:**
+```json
+{
+  "url": "https://github.com/owner/repo",
+  "app": "cursor"
+}
+```
+
+**Response Example:**
+```json
+{
+  "status": "success",
+  "message": "Repository cloned and opened successfully"
+}
+```
+
 ## Testing
 
 ### Testing with MCP Inspector

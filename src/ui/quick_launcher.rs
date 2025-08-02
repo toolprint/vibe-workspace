@@ -234,8 +234,19 @@ impl QuickLauncher {
             parts.push(format!("{}.", style(rank).cyan().bold()));
         }
 
-        // Repository name
-        parts.push(style(name).cyan().bold().to_string());
+        // Repository name - color by git status (red=no remote, yellow=changes, green=clean)
+        let name_style = if let Some(status) = git_status {
+            if status.remote_url.is_none() {
+                style(name).red().bold()
+            } else if !status.clean {
+                style(name).yellow().bold()
+            } else {
+                style(name).green().bold()
+            }
+        } else {
+            style(name).cyan().bold()
+        };
+        parts.push(name_style.to_string());
 
         // Git status (if available and not clean)
         if let Some(status) = git_status {
@@ -264,7 +275,7 @@ impl QuickLauncher {
 
             // Branch information
             if let Some(ref branch) = status.branch {
-                parts.push(format!("on {}", style(branch).dim()));
+                parts.push(format!("on {}", style(branch).white().bold()));
             }
         }
 

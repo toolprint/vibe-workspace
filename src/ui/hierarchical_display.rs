@@ -245,6 +245,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
 
     let mut total_clean = 0;
     let mut total_dirty = 0;
+    let mut total_no_remote = 0;
 
     for org_name in org_names {
         let repos = &org_groups[org_name];
@@ -266,11 +267,23 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
                         total_dirty += 1;
                     }
 
+                    // Count repositories without remotes
+                    if status.remote_url.is_none() {
+                        total_no_remote += 1;
+                    }
+
                     // Format the detailed status line similar to the original
                     let mut status_parts = Vec::new();
 
-                    // Repository name
-                    let name_part = format!("  {}", style(&repo.name).cyan().bold());
+                    // Repository name - color by git status (red=no remote, yellow=changes, green=clean)
+                    let name_style = if status.remote_url.is_none() {
+                        style(&repo.name).red().bold()
+                    } else if !status.clean {
+                        style(&repo.name).yellow().bold()
+                    } else {
+                        style(&repo.name).green().bold()
+                    };
+                    let name_part = format!("  {}", name_style);
 
                     // Branch information with ahead/behind indicators
                     if let Some(ref branch) = status.branch {
@@ -279,7 +292,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
                         } else {
                             branch.to_string()
                         };
-                        status_parts.push(format!("on {}", style(branch_display).yellow()));
+                        status_parts.push(format!("on {}", style(branch_display).white().bold()));
                     }
 
                     // Status indicators
@@ -326,10 +339,11 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
 
     // Summary
     println!(
-        "{} {} clean, {} with changes",
+        "{} {} clean, {} with changes, {} no remote",
         style("📊").blue(),
         style(total_clean).green(),
-        style(total_dirty).red()
+        style(total_dirty).red(),
+        style(total_no_remote).yellow()
     );
 }
 

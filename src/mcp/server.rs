@@ -54,7 +54,8 @@ impl VibeMCPServer {
             // Repository operation tools
             .with_tool(Arc::new(handlers::LaunchRepoTool))
             .with_tool(Arc::new(handlers::OpenRepoTool))
-            .with_tool(Arc::new(handlers::CloneAndOpenTool))
+            .with_tool(Arc::new(handlers::CloneTool))
+            .with_tool(Arc::new(handlers::CreateRepositoryTool))
             // Git operation tools
             .with_tool(Arc::new(handlers::GitStatusTool))
             .with_tool(Arc::new(handlers::ScanReposTool))

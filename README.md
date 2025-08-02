@@ -15,6 +15,7 @@ Vibe Workspace streamlines your development workflow by providing consistent env
 - 🚀 **Instant Setup** - Get productive in seconds with pre-configured vibe patterns
 - 🎯 **Pattern Enforcement** - Consistent coding patterns across all your repositories
 - 📁 **Multi-Repository Management** - Orchestrate vibe patterns across entire organizations
+- 🆕 **Quick Prototyping** - Create new repositories instantly with `vibe create`
 - 🔧 **Developer Tool Integration** - Pre-configured Warp, iTerm2, WezTerm, VS Code, Cursor, and Windsurf templates
 - 🎨 **Vibe Templates** - Ready-to-use configurations for different tech stacks
 - 🔄 **Pattern Propagation** - Apply vibe patterns to new and existing repositories
@@ -78,7 +79,8 @@ The setup wizard will:
 After setup, use these essential commands:
 ```bash
 vibe launch 1              # Quick launch recent repository
-vibe go <github-url>       # Clone, configure, and open in one command
+vibe create my-prototype   # Create new repository for prototyping  
+vibe clone <github-url>    # Clone, configure, and open in one command
 vibe                       # Interactive menu with smart actions
 ```
 

@@ -64,19 +64,64 @@ vibe launch      # Opens your most recent repository (no number)
 
 **Pro tip**: In the interactive menu, just press number keys `1-9` to instantly launch recent repositories!
 
-### Clone and Open in One Command
+After setup, use these essential commands:
+```bash
+vibe launch 1              # Quick launch recent repository
+vibe create my-prototype   # Create new repository for prototyping
+vibe clone <github-url>    # Clone, configure, and open in one command
+vibe                       # Interactive menu with smart actions
+```
 
-The `vibe go` command is perfect for quickly getting started with new repositories:
+### Create New Repository for Prototyping
+
+The `vibe create` command is perfect for quickly starting new prototype projects:
+
+```bash
+# Create a new repository interactively
+vibe create
+
+# Create with a specific name
+vibe create my-new-prototype
+
+# Create and open with a specific app
+vibe create my-prototype --app cursor
+
+# Create without configuring app (skip app selection)
+vibe create my-prototype --no-configure
+
+# Create without opening (just create the repository)
+vibe create my-prototype --no-open
+
+# Create with both flags (just create, no configuration or opening)
+vibe create my-prototype --no-configure --no-open
+```
+
+This command automatically:
+1. Detects your GitHub organizations (if authenticated)
+2. Validates the repository name for GitHub compatibility
+3. Creates a local git repository with development-ready templates
+4. Prompts you to configure an app (unless `--no-configure` is used)
+5. Opens the repository with your chosen app (unless `--no-open` is used)
+
+The repository includes:
+- README.md with project structure
+- .gitignore for common development files
+- src/ directory for your code
+- docs/TODO.md with development checklist
+
+### Clone Existing Repository
+
+The `vibe clone` command makes it easy to clone and start working with existing repositories:
 
 ```bash
 # Clone, configure, and open a repository in one command
-vibe go https://github.com/owner/repo
+vibe clone https://github.com/owner/repo
 
 # Clone with a specific app
-vibe go https://github.com/owner/repo --app cursor
+vibe clone https://github.com/owner/repo --app cursor
 
 # Just clone without opening
-vibe go https://github.com/owner/repo --no-open
+vibe clone https://github.com/owner/repo --no-open
 ```
 
 This command automatically:
@@ -198,7 +243,7 @@ vibe git scan --import
 vibe setup                    # Run setup wizard
 
 # 2. Clone and start working on a project
-vibe go https://github.com/company/main-app
+vibe clone https://github.com/company/main-app
 
 # 3. Quick access later
 vibe launch 1                 # Opens main-app instantly
@@ -213,7 +258,7 @@ vibe launch 1
 vibe launch 2
 
 # Clone a new repository you need to work on
-vibe go https://github.com/team/new-feature
+vibe clone https://github.com/team/new-feature
 
 # End of day: Sync all repositories
 vibe git sync --save-dirty

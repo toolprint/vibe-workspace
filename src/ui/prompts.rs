@@ -1328,6 +1328,18 @@ async fn handle_smart_action(
                 .sync_repositories(false, true, false, None)
                 .await?;
         }
+        SmartActionType::CreateRepository => {
+            use crate::ui::workflows::{execute_workflow, CreateRepositoryWorkflow};
+
+            let workflow = Box::new(CreateRepositoryWorkflow {
+                suggested_name: None,
+                app: None,
+                skip_configure: false,
+                skip_open: false,
+            });
+
+            execute_workflow(workflow, workspace_manager).await?;
+        }
         SmartActionType::CloneAndOpen(_) => {
             search_and_clone_interactive(workspace_manager).await?;
         }
