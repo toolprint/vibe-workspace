@@ -25,6 +25,7 @@ pub enum LaunchMethod {
 #[derive(Debug)]
 pub struct LaunchResult {
     pub method: LaunchMethod,
+    #[allow(dead_code)]
     pub success: bool,
     pub message: String,
 }

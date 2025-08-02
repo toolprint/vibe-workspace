@@ -27,7 +27,7 @@ impl TestEnvironment {
         // Create directory structure
         let home_dir = base_path.join("home");
         let workspace_root = base_path.join("workspace");
-        let vibe_dir = home_dir.join(".vibe-workspace");
+        let vibe_dir = home_dir.join(".toolprint/vibe-workspace");
         let config_path = vibe_dir.join("config.yaml");
         
         // Create all directories

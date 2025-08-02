@@ -72,6 +72,7 @@ impl GitStatusCache {
     }
 
     /// Create a git status cache with custom TTL
+    #[allow(dead_code)]
     pub fn with_ttl<P: Into<PathBuf>>(db_path: P, ttl_minutes: i64) -> Self {
         Self {
             db_path: db_path.into(),
@@ -125,6 +126,7 @@ impl GitStatusCache {
     }
 
     /// Cache git status information
+    #[allow(dead_code)]
     pub async fn cache_git_status(&self, status: &CachedGitStatus) -> Result<()> {
         let conn = Connection::open(&self.db_path).await?;
         let status = status.clone();
@@ -162,6 +164,7 @@ impl GitStatusCache {
     }
 
     /// Get cached git status if it's still valid (within TTL)
+    #[allow(dead_code)]
     pub async fn get_git_status(&self, repository_name: &str) -> Result<Option<CachedGitStatus>> {
         let conn = Connection::open(&self.db_path).await?;
         let repo_name = repository_name.to_string();

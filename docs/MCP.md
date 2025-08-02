@@ -37,7 +37,7 @@ The MCP integration provides:
 # Run MCP server on stdio (recommended for AI tools)
 vibe mcp --stdio
 
-# Run MCP server on TCP port (for debugging)
+# Run MCP server on TCP port (for debugging) - Coming soon
 vibe mcp --port 3000
 ```
 
@@ -60,7 +60,7 @@ For Claude Desktop specifically, add this to your `claude_desktop_config.json` w
 
 ## Available Tools
 
-### vibe_git_status
+### git_status
 Get git status for all repositories in the workspace.
 
 **Parameters:**
@@ -132,7 +132,7 @@ The Inspector also supports a powerful CLI mode for programmatic testing using t
 
 3. **Call a Tool**:
    ```bash
-   just mcp-inspector-call-tool vibe_git_status '{"dirty_only": true}'
+   just mcp-inspector-call-tool git_status '{"dirty_only": true}'
    ```
 
 4. **View Examples**:
@@ -236,7 +236,7 @@ Invalid initialize request: missing field `version`
    echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | vibe mcp --stdio
    
    # Call a tool
-   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"vibe_git_status","arguments":{}}}' | vibe mcp --stdio
+   echo '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"git_status","arguments":{}}}' | vibe mcp --stdio
    ```
 
 3. **Custom Test Scripts**: Use the provided test scripts in `tests/mcp/`:

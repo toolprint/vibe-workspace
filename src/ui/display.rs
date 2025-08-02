@@ -1,38 +1,47 @@
 use console::style;
 
+#[allow(dead_code)]
 pub fn print_header(title: &str) {
     println!("{}", style(format!("🚀 {title}")).blue().bold());
     println!("{}", "─".repeat(50));
 }
 
+#[allow(dead_code)]
 pub fn print_success(message: &str) {
     println!("{} {}", style("✅").green(), message);
 }
 
+#[allow(dead_code)]
 pub fn print_error(message: &str) {
     eprintln!("{} {}", style("❌").red(), message);
 }
 
+#[allow(dead_code)]
 pub fn print_warning(message: &str) {
     println!("{} {}", style("⚠️").yellow(), message);
 }
 
+#[allow(dead_code)]
 pub fn print_info(message: &str) {
     println!("{} {}", style("ℹ️").blue(), message);
 }
 
+#[allow(dead_code)]
 pub fn format_repository_name(name: &str) -> String {
     style(name).cyan().bold().to_string()
 }
 
+#[allow(dead_code)]
 pub fn format_path(path: &str) -> String {
     style(path).dim().to_string()
 }
 
+#[allow(dead_code)]
 pub fn format_branch(branch: &str) -> String {
     style(branch).yellow().to_string()
 }
 
+#[allow(dead_code)]
 pub fn format_status_indicator(clean: bool) -> String {
     if clean {
         style("✓").green().to_string()

@@ -1234,10 +1234,7 @@ async fn create_backup_interactive(workspace_manager: &WorkspaceManager) -> Resu
         .prompt()?;
 
     let output_dir = if use_custom_dir {
-        let default_backup_dir = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".vibe-workspace")
-            .join("backups");
+        let default_backup_dir = crate::workspace::constants::get_backups_dir();
         let dir_input = Text::new("Output directory:")
             .with_default(&default_backup_dir.display().to_string())
             .prompt()?;

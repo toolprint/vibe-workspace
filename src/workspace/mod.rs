@@ -1,5 +1,6 @@
 mod config;
 pub mod config_validator;
+pub mod constants;
 mod discovery;
 pub mod install;
 pub mod manager;

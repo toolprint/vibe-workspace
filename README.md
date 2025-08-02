@@ -1,7 +1,10 @@
 # Vibe Workspace
 
+[![MCP](https://badge.mcpx.dev?type=server&features=resources,tools)](https://modelcontextprotocol.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MSRV](https://img.shields.io/badge/rust-1.88.0%2B-orange.svg)](https://forge.rust-lang.org/releases.html)
 [![Cargo](https://img.shields.io/crates/v/vibe-workspace.svg)](https://crates.io/crates/vibe-workspace)
+[![Downloads](https://img.shields.io/crates/d/vibe-workspace.svg)](https://crates.io/crates/vibe-workspace)
 
 A lightweight CLI tool designed to help developers quickly adopt vibe-coding patterns across multiple repositories.
 
@@ -19,9 +22,29 @@ Vibe Workspace streamlines your development workflow by providing consistent env
 - 🤖 **MCP Support** - Model Context Protocol server for AI integration
 - 🛠️ **Extensible** - Create custom vibe patterns for your team
 
+## Platform Support
+
+Currently, **macOS is the only officially tested and supported platform**, with universal binaries available for both arm64 and amd64 architectures. 
+
+We cross-compile to Linux distributions, but full testing and support is not yet complete. Windows support is technically possible but not currently on the short-term roadmap unless highly requested by the community.
+
 ## Installation
 
-### From Cargo
+### Recommended (macOS)
+
+For the fastest installation on macOS, first ensure you have `cargo-binstall`:
+
+```bash
+brew install cargo-binstall
+```
+
+Then install vibe-workspace:
+
+```bash
+cargo binstall vibe-workspace
+```
+
+### From Cargo (Build from Source)
 
 ```bash
 cargo install vibe-workspace
@@ -74,10 +97,10 @@ For detailed app configuration, templates, and additional developer tools, see [
 
 ## Configuration
 
-Vibe stores its configuration and data in `~/.vibe-workspace/`:
+Vibe stores its configuration and data in `~/.toolprint/vibe-workspace/`:
 
 ```
-~/.vibe-workspace/
+~/.toolprint/vibe-workspace/
 ├── config.yaml          # Main workspace configuration
 ├── state.json           # User preferences and recent repositories
 ├── templates/           # App-specific templates
@@ -108,7 +131,17 @@ vibe config reset          # Factory reset (with confirmation)
 
 ## MCP Integration
 
-vibe-workspace includes built-in MCP (Model Context Protocol) server capabilities for AI integration. See [MCP Documentation](docs/MCP.md) for details.
+vibe-workspace includes built-in MCP (Model Context Protocol) server capabilities for AI integration.
+
+### Claude Code Integration
+
+After installing the vibe-workspace binary on your system, you can add it to Claude Code with:
+
+```bash
+claude mcp add -s user -t stdio vibe vibe mcp
+```
+
+For detailed MCP configuration and capabilities, see [MCP Documentation](docs/MCP.md).
 
 ## Development
 
@@ -148,7 +181,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
+Special thanks to **Anthropic** for their groundbreaking work with Claude Code, making agentic coding so powerful and accessible. Many of the best practices from [Claude Code Best Practices](https://www.anthropic.com/engineering/claude-code-best-practices) have influenced the design and philosophy of vibe-workspace.
+
 Built with:
+
 - [Clap](https://github.com/clap-rs/clap) - Command line argument parsing
 - [Inquire](https://github.com/mikaelmello/inquire) - Interactive prompts
 - [git2](https://github.com/rust-lang/git2-rs) - Git operations

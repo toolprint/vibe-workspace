@@ -118,9 +118,9 @@ impl VibeState {
 
     /// Get the default state file path
     fn default_state_path() -> Result<PathBuf> {
-        let home =
+        let _home =
             dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Could not find home directory"))?;
-        Ok(home.join(".vibe-workspace").join("state.json"))
+        Ok(crate::workspace::constants::get_state_file_path())
     }
 
     /// Add or update a recent repository

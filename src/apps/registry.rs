@@ -6,6 +6,7 @@ pub struct PackageInfo {
     pub manager: PackageManagerType,
     pub package_name: String,
     pub install_args: Vec<String>,
+    #[allow(dead_code)]
     pub tap: Option<String>,
 }
 
@@ -69,6 +70,7 @@ impl AppPackage {
     }
 
     /// Add a Cargo package
+    #[allow(dead_code)]
     pub fn with_cargo(mut self, package_name: &str) -> Self {
         self.packages.push(PackageInfo {
             manager: PackageManagerType::Cargo,
@@ -92,6 +94,7 @@ impl AppPackage {
     }
 
     /// Set the version pattern for parsing
+    #[allow(dead_code)]
     pub fn with_version_pattern(mut self, pattern: &str) -> Self {
         self.version_pattern = Some(pattern.to_string());
         self

@@ -242,7 +242,7 @@ vibe                          # Interactive menu with all projects
 2. **ESC Navigation**: Use ESC to go back in any menu or cancel any prompt
 3. **Quick Commands**: Use `vibe launch 1` from anywhere to open your most recent repository
 4. **Smart Menu**: The menu shows different options based on your workspace state
-5. **Template System**: Customize how repositories open with templates in `~/.vibe-workspace/templates/`
+5. **Template System**: Customize how repositories open with templates in `~/.toolprint/vibe-workspace/templates/`
 6. **Recent History**: Your last 15 repositories are always accessible via quick launch
 
 ## 🆘 Troubleshooting

@@ -16,7 +16,7 @@ pub struct GitStatusTool;
 #[async_trait]
 impl VibeToolHandler for GitStatusTool {
     fn tool_name(&self) -> &str {
-        "vibe_git_status"
+        "git_status"
     }
 
     fn tool_description(&self) -> &str {

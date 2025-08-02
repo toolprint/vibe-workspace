@@ -160,7 +160,7 @@ impl CloneCommand {
 
         let app_choices: Vec<String> = available_apps
             .iter()
-            .map(|(name, desc)| format!("{} - {}", name, desc))
+            .map(|(name, desc)| format!("{name} - {desc}"))
             .collect();
 
         let selected_display = Select::new("Choose an application:", app_choices)

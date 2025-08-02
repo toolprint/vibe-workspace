@@ -1,12 +1,12 @@
 [package]
 name = "vibe-workspace"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 authors = ["Brian Cripe <brian@onegrep.dev>"]
 description = "Extremely lightweight CLI for managing multiple git repositories and workspace configurations"
 license = "MIT"
 repository = "https://github.com/toolprint/vibe-workspace"
-keywords = ["git", "workspace", "cli", "repository", "development"]
+keywords = ["workspace", "productivity", "automation", "mcp", "cli"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]

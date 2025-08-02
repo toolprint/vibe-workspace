@@ -1,3 +1,9 @@
+// Warning Denial Implementation (TEMPORARILY DISABLED):
+// - Future: RUSTFLAGS="-D warnings" in release build justfile commands
+// - Future: #![cfg_attr(not(debug_assertions), deny(warnings))] at crate level
+// - Currently disabled until intentional dead code is properly annotated with #[allow(dead_code)]
+// - To re-enable: Add RUSTFLAGS="-D warnings" to zigbuild-release and build-release commands
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use console::style;
@@ -446,12 +452,9 @@ async fn main() -> Result<()> {
     output::init_with_verbosity(output_mode, cli.verbose);
 
     // Load or create workspace configuration
-    let config_path = cli.config.unwrap_or_else(|| {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".vibe-workspace")
-            .join("config.yaml")
-    });
+    let config_path = cli
+        .config
+        .unwrap_or_else(|| workspace::constants::get_default_config_path());
 
     let mut workspace_manager =
         WorkspaceManager::new_with_root_override(config_path.clone(), cli.root).await?;

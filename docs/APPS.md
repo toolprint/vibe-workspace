@@ -143,7 +143,7 @@ The installer will:
 
 App integrations are configured at two levels:
 
-1. **Global Configuration** (`~/.vibe-workspace/config.yaml`):
+1. **Global Configuration** (`~/.toolprint/vibe-workspace/config.yaml`):
    - App-specific settings (config directories, template paths)
    - Default template names
 
@@ -157,7 +157,7 @@ Templates define how repositories are opened in each app. They support variable 
 
 ### Template Locations
 ```
-~/.vibe-workspace/templates/
+~/.toolprint/vibe-workspace/templates/
 ├── warp/
 │   ├── default.yaml
 │   └── custom-dev.yaml
@@ -351,32 +351,32 @@ apps:
   warp:
     enabled: true
     config_dir: ~/.warp/launch_configurations
-    template_dir: ~/.vibe-workspace/templates/warp
+    template_dir: ~/.toolprint/vibe-workspace/templates/warp
     default_template: "default"
   iterm2:
     enabled: true
     config_dir: ~/Library/Application Support/iTerm2/DynamicProfiles
-    template_dir: ~/.vibe-workspace/templates/iterm2
+    template_dir: ~/.toolprint/vibe-workspace/templates/iterm2
     default_template: "default"
   wezterm:
     enabled: true
     config_dir: ~/.config/wezterm
-    template_dir: ~/.vibe-workspace/templates/wezterm
+    template_dir: ~/.toolprint/vibe-workspace/templates/wezterm
     default_template: "default"
   vscode:
     enabled: true
     workspace_dir: ~/.vscode/workspaces
-    template_dir: ~/.vibe-workspace/templates/vscode
+    template_dir: ~/.toolprint/vibe-workspace/templates/vscode
     default_template: "default"
   cursor:
     enabled: true
     workspace_dir: ~/.cursor/workspaces
-    template_dir: ~/.vibe-workspace/templates/cursor
+    template_dir: ~/.toolprint/vibe-workspace/templates/cursor
     default_template: "default"
   windsurf:
     enabled: true
     workspace_dir: ~/.windsurf/workspaces
-    template_dir: ~/.vibe-workspace/templates/windsurf
+    template_dir: ~/.toolprint/vibe-workspace/templates/windsurf
     default_template: "default"
 ```
 
@@ -386,22 +386,22 @@ apps:
 Create a new file in the appropriate template directory:
 ```bash
 # For Warp
-~/.vibe-workspace/templates/warp/my-template.yaml
+~/.toolprint/vibe-workspace/templates/warp/my-template.yaml
 
 # For iTerm2
-~/.vibe-workspace/templates/iterm2/my-template.json
+~/.toolprint/vibe-workspace/templates/iterm2/my-template.json
 
 # For WezTerm
-~/.vibe-workspace/templates/wezterm/my-template.yaml
+~/.toolprint/vibe-workspace/templates/wezterm/my-template.yaml
 
 # For VS Code
-~/.vibe-workspace/templates/vscode/my-template.json
+~/.toolprint/vibe-workspace/templates/vscode/my-template.json
 
 # For Cursor
-~/.vibe-workspace/templates/cursor/my-template.json
+~/.toolprint/vibe-workspace/templates/cursor/my-template.json
 
 # For Windsurf
-~/.vibe-workspace/templates/windsurf/my-template.json
+~/.toolprint/vibe-workspace/templates/windsurf/my-template.json
 ```
 
 ### Step 2: Customize Template

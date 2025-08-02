@@ -17,6 +17,7 @@ vibe [global-options] <command> [command-options]
 ├── launch [repo] [--app]          → Quick launch repository
 ├── go <url> [--app]              → Clone, configure, and open in one command
 ├── setup [--skip]                → Run first-time setup wizard
+├── mcp [--stdio] [--port]        → Run as MCP server (--port coming soon)
 ├── open <repo> [--app]           → Open repository with app
 ├── apps                          → App management
 │   ├── configure <repo> <app>    → Configure app for repository
@@ -58,6 +59,7 @@ Commands that directly perform actions (leaf nodes and commands with default act
 | `vibe launch [repo]` | Quick launch | Launch recent repo or specific repo by name/number |
 | `vibe go <url>` | Clone workflow | Clone, configure, and open repository |
 | `vibe setup` | Setup wizard | Run first-time workspace setup |
+| `vibe mcp --stdio` | MCP server | Run as Model Context Protocol server (--port coming soon) |
 | `vibe open <repo>` | Open repository | Open repo with configured app |
 | `vibe apps configure` | Configure app | Set up app integration for repository |
 | `vibe apps show` | Show configurations | Display current app configurations |
@@ -183,7 +185,7 @@ The interactive menu dynamically shows relevant actions based on workspace state
 
 ### Menu State Management
 
-**VibeState** (`~/.vibe-workspace/state.json`):
+**VibeState** (`~/.toolprint/vibe-workspace/state.json`):
 - Recent repositories (with last-used apps)
 - Setup wizard completion status
 - User preferences and access patterns

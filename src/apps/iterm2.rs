@@ -31,6 +31,7 @@ fn get_itermocil_config_dir() -> PathBuf {
     }
 }
 
+#[allow(dead_code)]
 pub async fn open_with_iterm2(
     config: &WorkspaceConfig,
     repo: &Repository,

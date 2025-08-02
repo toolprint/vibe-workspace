@@ -8,6 +8,7 @@ use anyhow::Result;
 use std::path::Path;
 
 /// Initialize the cache system
+#[allow(dead_code)]
 pub async fn initialize_cache<P: AsRef<Path>>(cache_dir: P) -> Result<()> {
     let cache_dir = cache_dir.as_ref();
 

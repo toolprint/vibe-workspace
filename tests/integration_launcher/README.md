@@ -126,7 +126,7 @@ Each test runs in a completely isolated environment:
 ```
 temp_dir/
 ├── home/                      # Isolated HOME directory
-│   └── .vibe-workspace/      # Vibe configuration
+│   └── .toolprint/vibe-workspace/      # Vibe configuration
 │       ├── config.yaml       # Workspace config
 │       └── templates/        # App templates
 └── workspace/                # Workspace root for repos
@@ -137,7 +137,7 @@ temp_dir/
 ### Path Overrides
 
 The test runner automatically overrides:
-- `--config`: Points to `temp_dir/home/.vibe-workspace/config.yaml`
+- `--config`: Points to `temp_dir/home/.toolprint/vibe-workspace/config.yaml`
 - `--root`: Points to `temp_dir/workspace/`
 - `HOME` environment variable: Points to `temp_dir/home/`
 

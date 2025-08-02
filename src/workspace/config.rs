@@ -163,7 +163,7 @@ pub enum AppIntegration {
 
 impl Default for WorkspaceConfig {
     fn default() -> Self {
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
 
         Self {
             workspace: WorkspaceInfo {
@@ -310,7 +310,7 @@ impl WorkspaceConfig {
     /// Ensure all app integrations are properly initialized
     /// This method handles migration from older configurations that may not have all apps configured
     pub async fn ensure_app_integrations_initialized(&mut self) -> Result<()> {
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
 
         // Ensure WezTerm integration is initialized
         if self.apps.wezterm.is_none() {
@@ -467,7 +467,7 @@ fn default_template_name() -> String {
 fn default_warp_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("warp")
 }
@@ -475,7 +475,7 @@ fn default_warp_template_dir() -> PathBuf {
 fn default_iterm2_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("iterm2")
 }
@@ -483,7 +483,7 @@ fn default_iterm2_template_dir() -> PathBuf {
 fn default_wezterm_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("wezterm")
 }
@@ -491,7 +491,7 @@ fn default_wezterm_template_dir() -> PathBuf {
 fn default_vscode_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("vscode")
 }
@@ -499,7 +499,7 @@ fn default_vscode_template_dir() -> PathBuf {
 fn default_cursor_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("cursor")
 }
@@ -507,7 +507,7 @@ fn default_cursor_template_dir() -> PathBuf {
 fn default_windsurf_template_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
-        .join(".vibe-workspace")
+        .join(super::constants::CONFIG_DIR_PATH)
         .join("templates")
         .join("windsurf")
 }

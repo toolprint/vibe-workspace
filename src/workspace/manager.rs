@@ -75,7 +75,7 @@ impl WorkspaceManager {
     pub async fn new(config_path: PathBuf) -> Result<Self> {
         let config = WorkspaceConfig::load_from_file(&config_path).await?;
 
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         let template_manager = TemplateManager::new(vibe_dir.join("templates"));
 
         // Initialize caches
@@ -105,7 +105,7 @@ impl WorkspaceManager {
             config.workspace.root = expanded_root;
         }
 
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         let template_manager = TemplateManager::new(vibe_dir.join("templates"));
 
         // Initialize caches
@@ -1269,7 +1269,10 @@ impl WorkspaceManager {
         println!(
             "{} Initialized default templates in {}",
             style("✓").green().bold(),
-            style("~/.vibe-workspace/templates").cyan()
+            style(super::constants::CONFIG_DIR_DISPLAY)
+                .cyan()
+                .to_string()
+                + "/templates"
         );
 
         Ok(())
@@ -1637,7 +1640,7 @@ impl WorkspaceManager {
             config_files.push(self.config_path.clone());
         }
 
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
 
         // State file (user preferences and recent repos)
         let state_file = vibe_dir.join("state.json");
@@ -1731,11 +1734,11 @@ impl WorkspaceManager {
         use chrono::Utc;
         use std::process::Command;
 
-        // Determine output directory - default to ~/.vibe-workspace/backups/
+        // Determine output directory - default to ~/.toolprint/vibe-workspace/backups/
         let backup_dir = output_dir.unwrap_or_else(|| {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join(".vibe-workspace")
+                .join(super::constants::CONFIG_DIR_PATH)
                 .join("backups")
         });
 
@@ -1994,7 +1997,7 @@ impl WorkspaceManager {
         }
 
         // Delete templates directory
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         let templates_dir = vibe_dir.join("templates");
         if templates_dir.exists() {
             tokio::fs::remove_dir_all(&templates_dir)
@@ -2165,7 +2168,7 @@ impl WorkspaceManager {
     /// Get repository cache (lazy initialization if needed)
     pub async fn get_repository_cache(&mut self) -> Result<&RepositoryCache> {
         if self.repo_cache.is_none() {
-            let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+            let vibe_dir = super::constants::get_config_dir();
             let cache_dir = vibe_dir.join("cache");
             self.repo_cache = Some(Self::init_repository_cache(&cache_dir).await?);
         }
@@ -2175,7 +2178,7 @@ impl WorkspaceManager {
     /// Get git status cache (lazy initialization if needed)
     pub async fn get_git_status_cache(&mut self) -> Result<&GitStatusCache> {
         if self.git_cache.is_none() {
-            let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+            let vibe_dir = super::constants::get_config_dir();
             let cache_dir = vibe_dir.join("cache");
             self.git_cache = Some(Self::init_git_status_cache(&cache_dir).await?);
         }
@@ -2228,7 +2231,7 @@ impl WorkspaceManager {
 
     /// Get quick launcher for fast repository selection
     pub async fn get_quick_launcher(&self) -> Result<crate::ui::quick_launcher::QuickLauncher> {
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         let cache_dir = vibe_dir.join("cache");
         crate::ui::quick_launcher::QuickLauncher::new(&cache_dir).await
     }
@@ -2304,7 +2307,7 @@ impl WorkspaceManager {
     pub async fn list_available_backups(&self) -> Result<Vec<BackupInfo>> {
         let backup_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".vibe-workspace")
+            .join(super::constants::CONFIG_DIR_PATH)
             .join("backups");
 
         if !backup_dir.exists() {
@@ -2442,7 +2445,7 @@ impl WorkspaceManager {
         let backups = self.list_available_backups().await?;
 
         if backups.is_empty() {
-            anyhow::bail!("No backup files found in ~/.vibe-workspace/backups/");
+            anyhow::bail!("No backup files found in ~/.toolprint/vibe-workspace/backups/");
         }
 
         println!("\n{} Available backups:", style("📦").blue());
@@ -2673,7 +2676,7 @@ impl WorkspaceManager {
         }
 
         // Copy files to their proper locations
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         tokio::fs::create_dir_all(&vibe_dir).await?;
 
         // Copy main config file
@@ -2747,7 +2750,7 @@ impl WorkspaceManager {
 
     /// Reinitialize cache databases after restore
     async fn reinitialize_caches(&mut self) -> Result<()> {
-        let vibe_dir = dirs::home_dir().unwrap_or_default().join(".vibe-workspace");
+        let vibe_dir = super::constants::get_config_dir();
         let cache_dir = vibe_dir.join("cache");
 
         // Remove existing cache files

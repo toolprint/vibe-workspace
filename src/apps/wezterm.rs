@@ -24,6 +24,7 @@ fn get_weztermocil_config_dir() -> PathBuf {
         .join("weztermocil")
 }
 
+#[allow(dead_code)]
 pub async fn open_with_wezterm(
     config: &WorkspaceConfig,
     repo: &Repository,

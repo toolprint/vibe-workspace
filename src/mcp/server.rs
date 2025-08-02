@@ -166,6 +166,7 @@ impl ToolHandler for VibeMCPServer {
 
 /// Builder for creating an MCP server with custom configuration
 pub struct MCPServerBuilder {
+    #[allow(dead_code)]
     workspace_manager: Option<Arc<Mutex<WorkspaceManager>>>,
 }
 
@@ -178,12 +179,14 @@ impl MCPServerBuilder {
     }
 
     /// Sets the workspace manager
+    #[allow(dead_code)]
     pub fn with_workspace_manager(mut self, manager: Arc<Mutex<WorkspaceManager>>) -> Self {
         self.workspace_manager = Some(manager);
         self
     }
 
     /// Builds the MCP server
+    #[allow(dead_code)]
     pub fn build(self) -> Result<VibeMCPServer> {
         let workspace_manager = self
             .workspace_manager
