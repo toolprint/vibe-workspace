@@ -160,6 +160,11 @@ impl WorkspaceManager {
         // Save configuration
         self.save_config().await?;
 
+        // Configure Claude agents if enabled
+        if let Err(e) = super::claude_agents::configure_claude_agents(&self.config).await {
+            warn!("Failed to configure Claude agents: {}", e);
+        }
+
         // Initialize default templates
         if let Err(e) = self.init_templates().await {
             warn!("Failed to initialize default templates: {}", e);
@@ -437,6 +442,10 @@ impl WorkspaceManager {
         &self.config
     }
 
+    pub fn config_mut(&mut self) -> &mut WorkspaceConfig {
+        &mut self.config
+    }
+
     pub async fn add_repository(&mut self, repo: Repository) -> Result<()> {
         self.config.add_repository(repo);
         self.save_config().await
@@ -629,7 +638,7 @@ impl WorkspaceManager {
 
         // Check if repository is dirty
         let status_output = Command::new("git")
-            .args(&["status", "--porcelain"])
+            .args(["status", "--porcelain"])
             .current_dir(repo_path)
             .output()?;
 
@@ -640,11 +649,11 @@ impl WorkspaceManager {
 
         // Create timestamp for branch name
         let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
-        let branch_name = format!("dirty/{}", timestamp);
+        let branch_name = format!("dirty/{timestamp}");
 
         // Get current branch name
         let current_branch_output = Command::new("git")
-            .args(&["branch", "--show-current"])
+            .args(["branch", "--show-current"])
             .current_dir(repo_path)
             .output()?;
         let current_branch = String::from_utf8_lossy(&current_branch_output.stdout)
@@ -653,33 +662,33 @@ impl WorkspaceManager {
 
         // Create and switch to dirty branch
         Command::new("git")
-            .args(&["checkout", "-b", &branch_name])
+            .args(["checkout", "-b", &branch_name])
             .current_dir(repo_path)
             .output()?;
 
         // Add all changes
         Command::new("git")
-            .args(&["add", "-A"])
+            .args(["add", "-A"])
             .current_dir(repo_path)
             .output()?;
 
         // Commit changes
-        let commit_message = format!("WIP: auto-saved dirty changes from {}", current_branch);
+        let commit_message = format!("WIP: auto-saved dirty changes from {current_branch}");
         Command::new("git")
-            .args(&["commit", "-m", &commit_message])
+            .args(["commit", "-m", &commit_message])
             .current_dir(repo_path)
             .output()?;
 
         // Switch back to original branch
         Command::new("git")
-            .args(&["checkout", &current_branch])
+            .args(["checkout", &current_branch])
             .current_dir(repo_path)
             .output()?;
 
         Ok(())
     }
 
-    async fn save_config(&self) -> Result<()> {
+    pub async fn save_config(&self) -> Result<()> {
         self.config.save_to_file(&self.config_path).await
     }
 
@@ -741,6 +750,11 @@ impl WorkspaceManager {
 
         // Save configuration
         self.save_config().await?;
+
+        // Configure Claude agents if enabled
+        if let Err(e) = super::claude_agents::configure_claude_agents(&self.config).await {
+            warn!("Failed to configure Claude agents: {}", e);
+        }
 
         println!(
             "{} Initialized workspace '{}' in {}",
@@ -2386,7 +2400,7 @@ impl WorkspaceManager {
         } else if bytes >= KB {
             format!("{:.1} kB", bytes as f64 / KB as f64)
         } else {
-            format!("{} B", bytes)
+            format!("{bytes} B")
         }
     }
 

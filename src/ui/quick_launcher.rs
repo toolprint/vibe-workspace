@@ -237,7 +237,7 @@ impl QuickLauncher {
                 style(&item.name).cyan()
             );
 
-            let app_options: Vec<String> = item.apps.iter().cloned().collect();
+            let app_options: Vec<String> = item.apps.to_vec();
 
             let selected_app_result = Select::new("App:", app_options)
                 .with_help_message("Select the app to open this repository with • ESC to cancel")
@@ -268,7 +268,7 @@ impl QuickLauncher {
                 Some(app_to_use.clone()),
             );
             if let Err(e) = user_state.save() {
-                eprintln!("Warning: Failed to save recent repositories: {}", e);
+                eprintln!("Warning: Failed to save recent repositories: {e}");
             }
         }
 
@@ -334,14 +334,11 @@ impl QuickLauncher {
                     Ok(git_status) => {
                         let cached_status = git_status.into();
                         if let Err(e) = self.git_cache.cache_git_status(&cached_status).await {
-                            eprintln!(
-                                "Warning: Failed to cache git status for {}: {}",
-                                repo_name, e
-                            );
+                            eprintln!("Warning: Failed to cache git status for {repo_name}: {e}");
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: Failed to get git status for {}: {}", repo_name, e);
+                        eprintln!("Warning: Failed to get git status for {repo_name}: {e}");
                     }
                 }
             }

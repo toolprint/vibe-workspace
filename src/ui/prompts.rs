@@ -39,7 +39,7 @@ fn create_navigation_separator() -> String {
 
 /// Format navigation option with brackets
 fn format_navigation_option(text: &str) -> String {
-    format!("[{}]", text)
+    format!("[{text}]")
 }
 
 /// Create a menu with standardized navigation options
@@ -159,7 +159,7 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
 
         // Handle number key shortcuts (1-9) for quick launch
         if let Some(digit) = selection.chars().next().and_then(|c| c.to_digit(10)) {
-            if digit >= 1 && digit <= 9 {
+            if (1..=9).contains(&digit) {
                 let index = (digit - 1) as usize;
                 if index < quick_items.len() {
                     let item = &quick_items[index];
@@ -466,7 +466,7 @@ async fn execute_command_interactive(workspace_manager: &WorkspaceManager) -> Re
                 return Ok(());
             }
 
-            format!("git {}", selected)
+            format!("git {selected}")
         }
         "⚡ Custom git command" => {
             let command_result = Text::new("Git command to execute:")
@@ -1563,32 +1563,33 @@ pub async fn run_setup_wizard(workspace_manager: &mut WorkspaceManager) -> Resul
         style("Step 3: Default app configuration").yellow().bold()
     );
 
-    if has_apps && !workspace_manager.list_repositories().is_empty() {
-        if prompt_yes_no(
+    if has_apps
+        && !workspace_manager.list_repositories().is_empty()
+        && prompt_yes_no(
             "Would you like to configure a default app for your repositories?",
             true,
-        )? {
-            let default_app = prompt_app_selection()?;
+        )?
+    {
+        let default_app = prompt_app_selection()?;
 
-            // Configure for all repositories
-            let repo_names: Vec<String> = workspace_manager
-                .list_repositories()
-                .iter()
-                .map(|r| r.name.clone())
-                .collect();
+        // Configure for all repositories
+        let repo_names: Vec<String> = workspace_manager
+            .list_repositories()
+            .iter()
+            .map(|r| r.name.clone())
+            .collect();
 
-            for repo_name in repo_names {
-                workspace_manager
-                    .configure_app_for_repo(&repo_name, &default_app, "default")
-                    .await?;
-            }
-
-            println!(
-                "{} Configured {} as default app for all repositories",
-                style("✓").green().bold(),
-                style(&default_app).cyan()
-            );
+        for repo_name in repo_names {
+            workspace_manager
+                .configure_app_for_repo(&repo_name, &default_app, "default")
+                .await?;
         }
+
+        println!(
+            "{} Configured {} as default app for all repositories",
+            style("✓").green().bold(),
+            style(&default_app).cyan()
+        );
     }
 
     // Step 4: Quick tips

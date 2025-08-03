@@ -260,7 +260,7 @@ enum ConfigCommands {
         #[arg(short, long, default_value = "yaml")]
         format: String,
 
-        /// Show only a specific section: workspace, repositories, groups, apps
+        /// Show only a specific section: workspace, repositories, groups, apps, claude_agents
         #[arg(short, long)]
         section: Option<String>,
     },
@@ -445,7 +445,7 @@ async fn main() -> Result<()> {
     // Load or create workspace configuration
     let config_path = cli
         .config
-        .unwrap_or_else(|| workspace::constants::get_default_config_path());
+        .unwrap_or_else(workspace::constants::get_default_config_path);
 
     let mut workspace_manager =
         WorkspaceManager::new_with_root_override(config_path.clone(), cli.root).await?;

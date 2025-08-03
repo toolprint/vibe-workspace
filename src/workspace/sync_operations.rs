@@ -226,7 +226,7 @@ async fn clone_repository(url: &str, target_path: &Path) -> Result<()> {
     use std::process::Command;
 
     let output = Command::new("git")
-        .args(&["clone", url, &target_path.to_string_lossy()])
+        .args(["clone", url, &target_path.to_string_lossy()])
         .output()
         .with_context(|| "Failed to execute git clone")?;
 

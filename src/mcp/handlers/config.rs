@@ -99,7 +99,7 @@ impl VibeToolHandler for ShowConfigTool {
                 "section": {
                     "type": "string",
                     "description": "Show only a specific section",
-                    "enum": ["workspace", "repositories", "groups", "apps"]
+                    "enum": ["workspace", "repositories", "groups", "apps", "claude_agents"]
                 }
             },
             "required": []
@@ -138,15 +138,18 @@ impl VibeToolHandler for ShowConfigTool {
             Some("apps") => json!({
                 "apps": ws.config().apps
             }),
+            Some("claude_agents") => json!({
+                "claude_agents": ws.config().claude_agents
+            }),
             Some(unknown_section) => {
                 return Ok(json!({
                     "status": "error",
-                    "message": format!("Unknown section: {}. Valid sections are: workspace, repositories, groups, apps", unknown_section)
+                    "message": format!("Unknown section: {}. Valid sections are: workspace, repositories, groups, apps, claude_agents", unknown_section)
                 }));
             }
             None => {
                 // Return full config
-                serde_json::to_value(&ws.config())?
+                serde_json::to_value(ws.config())?
             }
         };
 
@@ -245,7 +248,7 @@ impl VibeToolHandler for ValidateConfigTool {
                     "type": "boolean",
                     "description": "Validate app integrations",
                     "default": false
-                }
+                },
             },
             "required": []
         })
@@ -303,7 +306,7 @@ impl VibeToolHandler for ValidateConfigTool {
                 "basic": true,
                 "paths": check_paths,
                 "remotes": check_remotes,
-                "apps": check_apps
+                "apps": check_apps,
             }
         }))
     }

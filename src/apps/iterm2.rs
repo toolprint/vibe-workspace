@@ -373,39 +373,30 @@ fn generate_itermocil_yaml(config: &WorkspaceConfig, repo: &Repository) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::{AppIntegrations, ITerm2Integration, Repository, WorkspaceInfo};
+    use crate::workspace::{ITerm2Integration, Repository, WorkspaceInfo};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_config() -> WorkspaceConfig {
         let temp_dir = TempDir::new().unwrap();
 
-        WorkspaceConfig {
-            workspace: WorkspaceInfo {
-                name: "test-workspace".to_string(),
-                root: PathBuf::from("/tmp/test"),
-                auto_discover: false,
-            },
-            repositories: vec![
-                Repository::new("frontend", "./frontend"),
-                Repository::new("backend", "./backend"),
-            ],
-            groups: vec![],
-            apps: AppIntegrations {
-                github: None,
-                warp: None,
-                vscode: None,
-                iterm2: Some(ITerm2Integration {
-                    enabled: true,
-                    config_dir: temp_dir.path().to_path_buf(),
-                    template_dir: temp_dir.path().join("templates").join("iterm2"),
-                    default_template: "default".to_string(),
-                }),
-                wezterm: None,
-                cursor: None,
-                windsurf: None,
-            },
-            preferences: None,
-        }
+        let mut config = WorkspaceConfig::default();
+        config.workspace = WorkspaceInfo {
+            name: "test-workspace".to_string(),
+            root: PathBuf::from("/tmp/test"),
+            auto_discover: false,
+        };
+        config.repositories = vec![
+            Repository::new("frontend", "./frontend"),
+            Repository::new("backend", "./backend"),
+        ];
+        config.apps.iterm2 = Some(ITerm2Integration {
+            enabled: true,
+            config_dir: temp_dir.path().to_path_buf(),
+            template_dir: temp_dir.path().join("templates").join("iterm2"),
+            default_template: "default".to_string(),
+        });
+
+        config
     }
 }

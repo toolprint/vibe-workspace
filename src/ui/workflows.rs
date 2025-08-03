@@ -370,9 +370,9 @@ impl Workflow for CreateRepositoryWorkflow {
                     .iter()
                     .map(|owner| {
                         if owner == &user_info.username {
-                            format!("{} (personal)", owner)
+                            format!("{owner} (personal)")
                         } else {
-                            format!("{} (organization)", owner)
+                            format!("{owner} (organization)")
                         }
                     })
                     .collect();
@@ -463,7 +463,7 @@ impl Workflow for CreateRepositoryWorkflow {
 
     fn description(&self) -> String {
         if let Some(name) = &self.suggested_name {
-            format!("Create repository '{}'", name)
+            format!("Create repository '{name}'")
         } else {
             "Create new repository".to_string()
         }

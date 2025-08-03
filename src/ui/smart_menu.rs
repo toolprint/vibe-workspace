@@ -182,7 +182,7 @@ impl SmartMenu {
             if days > 7 {
                 actions.push(SmartAction {
                     label: "🔄 Sync all repositories".to_string(),
-                    description: format!("Last synced {} days ago", days),
+                    description: format!("Last synced {days} days ago"),
                     action_type: SmartActionType::SyncRepositories,
                     priority: 50,
                 });
@@ -243,7 +243,7 @@ impl SmartMenu {
 /// Create a context-aware menu item label
 pub fn create_menu_item(base_label: &str, context: Option<&str>) -> String {
     match context {
-        Some(ctx) => format!("{} {}", base_label, ctx),
+        Some(ctx) => format!("{base_label} {ctx}"),
         None => base_label.to_string(),
     }
 }

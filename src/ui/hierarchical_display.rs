@@ -110,7 +110,7 @@ fn render_repository_entry(repo: &RepoInfo, options: &DisplayOptions) {
         RepoStatus::Missing => style(&repo.name).red(),
     };
 
-    print!("  {} {}", status_icon, repo_name);
+    print!("  {status_icon} {repo_name}");
 
     if options.show_paths && !options.compact {
         print!(" {}", style(format!("({})", repo.path.display())).dim());
@@ -234,10 +234,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
     let mut org_groups: HashMap<String, Vec<&RepoInfo>> = HashMap::new();
     for repo in &tracked_repos {
         let org_name = repo.organization.as_deref().unwrap_or("Other").to_string();
-        org_groups
-            .entry(org_name)
-            .or_insert_with(Vec::new)
-            .push(repo);
+        org_groups.entry(org_name).or_default().push(repo);
     }
 
     let mut org_names: Vec<_> = org_groups.keys().collect();
@@ -283,7 +280,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
                     } else {
                         style(&repo.name).green().bold()
                     };
-                    let name_part = format!("  {}", name_style);
+                    let name_part = format!("  {name_style}");
 
                     // Branch information with ahead/behind indicators
                     if let Some(ref branch) = status.branch {
@@ -317,7 +314,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
 
                     // Print the complete status line
                     if status_parts.is_empty() {
-                        println!("{}", name_part);
+                        println!("{name_part}");
                     } else {
                         println!("{} {}", name_part, status_parts.join(" "));
                     }
@@ -328,7 +325,7 @@ pub async fn render_status_summary(analysis: &WorkspaceAnalysis) {
                         "  {} {} {}",
                         style("⚠").yellow(),
                         style(&repo.name).cyan().bold(),
-                        style(format!("({})", e)).dim()
+                        style(format!("({e})")).dim()
                     );
                 }
             }

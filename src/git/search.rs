@@ -19,10 +19,7 @@ impl SearchEngine {
         for provider_name in &config.search_providers {
             match ProviderFactory::create_provider(provider_name) {
                 Ok(provider) => providers.push(provider),
-                Err(e) => eprintln!(
-                    "Warning: Failed to create provider '{}': {}",
-                    provider_name, e
-                ),
+                Err(e) => eprintln!("Warning: Failed to create provider '{provider_name}': {e}"),
             }
         }
 
@@ -154,7 +151,7 @@ impl SearchCommand {
                 };
 
                 let lang = if let Some(language) = &repo.language {
-                    format!(" [{}]", language)
+                    format!(" [{language}]")
                 } else {
                     "".to_string()
                 };
@@ -168,7 +165,7 @@ impl SearchCommand {
                 let desc = repo.description.as_deref().unwrap_or("No description");
                 let truncated_desc = if desc.chars().count() > 40 {
                     let truncated: String = desc.chars().take(40).collect();
-                    format!("{}...", truncated)
+                    format!("{truncated}...")
                 } else {
                     desc.to_string()
                 };
@@ -292,7 +289,7 @@ impl SearchCommand {
                 };
 
                 let lang = if let Some(language) = &repo.language {
-                    format!(" [{}]", language)
+                    format!(" [{language}]")
                 } else {
                     "".to_string()
                 };
@@ -306,7 +303,7 @@ impl SearchCommand {
                 let desc = repo.description.as_deref().unwrap_or("No description");
                 let truncated_desc = if desc.chars().count() > 50 {
                     let truncated: String = desc.chars().take(50).collect();
-                    format!("{}...", truncated)
+                    format!("{truncated}...")
                 } else {
                     desc.to_string()
                 };

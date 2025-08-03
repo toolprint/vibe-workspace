@@ -5,7 +5,6 @@ use crate::workspace::operations::GitStatus;
 
 /// Shared formatting utilities for consistent display across UI components
 /// This module provides unified color schemes and formatting patterns for repository items
-
 /// Format a timestamp as human-readable time ago
 pub fn format_time_ago(timestamp: &chrono::DateTime<Utc>) -> String {
     let now = Utc::now();
@@ -135,7 +134,7 @@ pub fn format_repository_quick_launch(
     parts.push(get_repo_name_color(repo_name, git_status));
 
     // Time indicator
-    parts.push(style(format!("({})", last_accessed)).dim().to_string());
+    parts.push(style(format!("({last_accessed})")).dim().to_string());
 
     // App indicator (arrow notation for single app)
     if let Some(app) = last_app {
@@ -167,7 +166,7 @@ pub fn format_repository_launch_item(
     // For recent items, show time like main menu
     if recent_rank.is_some() {
         if let Some(time) = last_accessed {
-            parts.push(style(format!("({})", time)).dim().to_string());
+            parts.push(style(format!("({time})")).dim().to_string());
         }
     }
 

@@ -143,7 +143,8 @@ async fn choose_workspace_root(
             .prompt()?;
 
         // Handle tilde expansion
-        let expanded_path = if custom_path.starts_with("~/") {
+
+        if custom_path.starts_with("~/") {
             if let Some(home) = dirs::home_dir() {
                 home.join(&custom_path[2..])
             } else {
@@ -151,9 +152,7 @@ async fn choose_workspace_root(
             }
         } else {
             PathBuf::from(custom_path)
-        };
-
-        expanded_path
+        }
     } else {
         PathBuf::from(selection)
     };

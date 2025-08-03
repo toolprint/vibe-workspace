@@ -48,7 +48,7 @@ impl RepositoryCreator {
 
     async fn get_github_username(&self) -> Result<String> {
         let output = Command::new("gh")
-            .args(&["api", "user", "--jq", ".login"])
+            .args(["api", "user", "--jq", ".login"])
             .output()
             .await
             .context("Failed to get GitHub username")?;
@@ -72,7 +72,7 @@ impl RepositoryCreator {
 
     async fn get_github_organizations(&self) -> Result<Vec<GitHubOrganization>> {
         let output = Command::new("gh")
-            .args(&["api", "user/orgs", "--jq", ".[].login"])
+            .args(["api", "user/orgs", "--jq", ".[].login"])
             .output()
             .await
             .context("Failed to get GitHub organizations")?;
@@ -109,7 +109,7 @@ impl RepositoryCreator {
         }
 
         let output = Command::new("gh")
-            .args(&["api", &format!("repos/{}/{}", owner, repo_name)])
+            .args(["api", &format!("repos/{owner}/{repo_name}")])
             .output()
             .await
             .context("Failed to check repository availability")?;
@@ -158,7 +158,7 @@ impl RepositoryCreator {
         let repository_config = Repository {
             name: repo_name.to_string(),
             path: PathBuf::from(owner).join(repo_name),
-            url: Some(format!("https://github.com/{}/{}", owner, repo_name)),
+            url: Some(format!("https://github.com/{owner}/{repo_name}")),
             branch: Some("main".to_string()),
             apps: std::collections::HashMap::new(),
         };
@@ -176,7 +176,7 @@ impl RepositoryCreator {
 
     async fn initialize_git_repository(&self, repo_path: &PathBuf) -> Result<()> {
         let output = Command::new("git")
-            .args(&["init"])
+            .args(["init"])
             .current_dir(repo_path)
             .output()
             .await
@@ -189,7 +189,7 @@ impl RepositoryCreator {
 
         // Set default branch to main
         let _output = Command::new("git")
-            .args(&["branch", "-M", "main"])
+            .args(["branch", "-M", "main"])
             .current_dir(repo_path)
             .output()
             .await
@@ -203,8 +203,7 @@ impl RepositoryCreator {
     async fn apply_default_template(&self, repo_path: &PathBuf, repo_name: &str) -> Result<()> {
         // Create README.md
         let readme_content = format!(
-            "# {}\n\nA new repository created with vibe-workspace.\n\n## Getting Started\n\nThis repository is ready for development. Add your code in the `src/` directory.\n\n## TODO\n\n- [ ] Choose your development framework\n- [ ] Set up your development environment\n- [ ] Add project-specific configuration\n- [ ] Update this README with project details\n",
-            repo_name
+            "# {repo_name}\n\nA new repository created with vibe-workspace.\n\n## Getting Started\n\nThis repository is ready for development. Add your code in the `src/` directory.\n\n## TODO\n\n- [ ] Choose your development framework\n- [ ] Set up your development environment\n- [ ] Add project-specific configuration\n- [ ] Update this README with project details\n"
         );
 
         tokio::fs::write(repo_path.join("README.md"), readme_content)
@@ -354,7 +353,7 @@ When ready to deploy:
     async fn create_initial_commit(&self, repo_path: &PathBuf, repo_name: &str) -> Result<()> {
         // Add all files
         let output = Command::new("git")
-            .args(&["add", "."])
+            .args(["add", "."])
             .current_dir(repo_path)
             .output()
             .await
@@ -366,9 +365,9 @@ When ready to deploy:
         }
 
         // Create initial commit
-        let commit_message = format!("Initial commit for {}", repo_name);
+        let commit_message = format!("Initial commit for {repo_name}");
         let output = Command::new("git")
-            .args(&["commit", "-m", &commit_message])
+            .args(["commit", "-m", &commit_message])
             .current_dir(repo_path)
             .output()
             .await

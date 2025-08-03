@@ -12,16 +12,16 @@ pub fn write_output(
     match (mode, is_display) {
         // In CLI mode, display goes to stdout, logs go to stderr
         (OutputMode::Cli, true) => {
-            print!("{}", args);
+            print!("{args}");
             io::stdout().flush()
         }
         (OutputMode::Cli, false) => {
-            eprint!("{}", args);
+            eprint!("{args}");
             io::stderr().flush()
         }
         // In MCP mode, everything goes to stderr
         (OutputMode::Mcp, _) => {
-            eprint!("{}", args);
+            eprint!("{args}");
             io::stderr().flush()
         }
     }
@@ -36,16 +36,16 @@ pub fn writeln_output(
     match (mode, is_display) {
         // In CLI mode, display goes to stdout, logs go to stderr
         (OutputMode::Cli, true) => {
-            println!("{}", args);
+            println!("{args}");
             io::stdout().flush()
         }
         (OutputMode::Cli, false) => {
-            eprintln!("{}", args);
+            eprintln!("{args}");
             io::stderr().flush()
         }
         // In MCP mode, everything goes to stderr
         (OutputMode::Mcp, _) => {
-            eprintln!("{}", args);
+            eprintln!("{args}");
             io::stderr().flush()
         }
     }

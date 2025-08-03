@@ -132,39 +132,30 @@ pub async fn cleanup_vscode_config(config: &WorkspaceConfig, repo: &Repository) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::{AppIntegrations, Repository, VSCodeIntegration, WorkspaceInfo};
+    use crate::workspace::{Repository, VSCodeIntegration, WorkspaceInfo};
     use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_config() -> WorkspaceConfig {
         let temp_dir = TempDir::new().unwrap();
 
-        WorkspaceConfig {
-            workspace: WorkspaceInfo {
-                name: "test-workspace".to_string(),
-                root: PathBuf::from("/tmp/test"),
-                auto_discover: false,
-            },
-            repositories: vec![
-                Repository::new("frontend", "./frontend"),
-                Repository::new("backend", "./backend"),
-            ],
-            groups: vec![],
-            apps: AppIntegrations {
-                github: None,
-                warp: None,
-                iterm2: None,
-                vscode: Some(VSCodeIntegration {
-                    enabled: true,
-                    workspace_dir: temp_dir.path().to_path_buf(),
-                    template_dir: temp_dir.path().join("templates").join("vscode"),
-                    default_template: "default".to_string(),
-                }),
-                wezterm: None,
-                cursor: None,
-                windsurf: None,
-            },
-            preferences: None,
-        }
+        let mut config = WorkspaceConfig::default();
+        config.workspace = WorkspaceInfo {
+            name: "test-workspace".to_string(),
+            root: PathBuf::from("/tmp/test"),
+            auto_discover: false,
+        };
+        config.repositories = vec![
+            Repository::new("frontend", "./frontend"),
+            Repository::new("backend", "./backend"),
+        ];
+        config.apps.vscode = Some(VSCodeIntegration {
+            enabled: true,
+            workspace_dir: temp_dir.path().to_path_buf(),
+            template_dir: temp_dir.path().join("templates").join("vscode"),
+            default_template: "default".to_string(),
+        });
+
+        config
     }
 }

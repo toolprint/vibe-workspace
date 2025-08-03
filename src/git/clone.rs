@@ -147,7 +147,7 @@ impl CloneCommand {
         workspace_manager: &mut WorkspaceManager,
     ) -> Result<()> {
         // Get available app choices (hardcoded for now, could be made configurable)
-        let available_apps = vec![
+        let available_apps = [
             ("vscode", "Visual Studio Code - Code editor"),
             ("warp", "Warp - Modern terminal"),
             ("iterm2", "iTerm2 - Terminal emulator"),

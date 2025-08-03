@@ -103,7 +103,7 @@ impl ValidationReport {
         if !self.warnings.is_empty() {
             println!("{} Warnings", style("⚠️").yellow());
             for warning in &self.warnings {
-                println!("  • {}", warning);
+                println!("  • {warning}");
             }
             println!();
         }
@@ -172,14 +172,12 @@ pub fn validate_config(
 
     // Detect name duplicates (but only if they're not path/URL duplicates)
     for (_, repos) in by_name {
-        if repos.len() > 1 {
-            if !is_already_in_duplicates(&repos, &duplicates) {
-                duplicates.push(DuplicateRepository {
-                    repositories: repos.into_iter().cloned().collect(),
-                    conflict_type: DuplicateType::SameName,
-                    recommended_action: RecommendedAction::ManualReview,
-                });
-            }
+        if repos.len() > 1 && !is_already_in_duplicates(&repos, &duplicates) {
+            duplicates.push(DuplicateRepository {
+                repositories: repos.into_iter().cloned().collect(),
+                conflict_type: DuplicateType::SameName,
+                recommended_action: RecommendedAction::ManualReview,
+            });
         }
     }
 

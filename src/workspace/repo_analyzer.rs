@@ -82,7 +82,7 @@ impl WorkspaceAnalysis {
             .unwrap_or_else(|| "Other".to_string());
         self.organizations
             .entry(org_name)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(repo.clone());
         self.repositories.push(repo);
     }

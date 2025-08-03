@@ -22,8 +22,9 @@ pub struct Repository {
     pub topics: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SortMethod {
+    #[default]
     BestMatch,
     Stars,
     Forks,
@@ -47,12 +48,6 @@ impl SortMethod {
             SortMethod::Forks => "Most Forks",
             SortMethod::Updated => "Recently Updated",
         }
-    }
-}
-
-impl Default for SortMethod {
-    fn default() -> Self {
-        SortMethod::BestMatch
     }
 }
 

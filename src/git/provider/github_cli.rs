@@ -52,7 +52,7 @@ impl GitHubCliProvider {
     /// Get the currently authenticated GitHub username
     pub async fn get_username(&self) -> Result<String> {
         let output = Command::new(&self.gh_path)
-            .args(&["api", "user", "--jq", ".login"])
+            .args(["api", "user", "--jq", ".login"])
             .output()
             .await
             .context("Failed to get GitHub username")?;
@@ -77,7 +77,7 @@ impl GitHubCliProvider {
     /// Get the organizations the authenticated user belongs to
     pub async fn get_user_organizations(&self) -> Result<Vec<String>> {
         let output = Command::new(&self.gh_path)
-            .args(&["api", "user/orgs", "--jq", ".[].login"])
+            .args(["api", "user/orgs", "--jq", ".[].login"])
             .output()
             .await
             .context("Failed to get GitHub organizations")?;
@@ -102,7 +102,7 @@ impl GitHubCliProvider {
     /// Check if a repository exists for the given owner and name
     pub async fn repository_exists(&self, owner: &str, repo_name: &str) -> Result<bool> {
         let output = Command::new(&self.gh_path)
-            .args(&["api", &format!("repos/{}/{}", owner, repo_name)])
+            .args(["api", &format!("repos/{owner}/{repo_name}")])
             .output()
             .await
             .context("Failed to check repository existence")?;
@@ -149,7 +149,7 @@ impl GitHubCliProvider {
                 result
                     .full_name
                     .split('/')
-                    .last()
+                    .next_back()
                     .unwrap_or(&result.full_name)
                     .to_string()
             });
@@ -182,7 +182,7 @@ impl GitHubCliProvider {
 
     async fn get_repo_details(&self, repo_name: &str) -> Result<Repository> {
         let output = Command::new(&self.gh_path)
-            .args(&[
+            .args([
                 "repo",
                 "view",
                 repo_name,
@@ -240,21 +240,21 @@ impl GitHubCliProvider {
 impl SearchProvider for GitHubCliProvider {
     async fn search(&self, query: &SearchQuery) -> Result<Vec<Repository>> {
         let mut cmd = Command::new(&self.gh_path);
-        cmd.args(&["search", "repos"]);
+        cmd.args(["search", "repos"]);
 
         // Build search string
         let mut search_parts = query.keywords.clone();
 
         if let Some(org) = &query.organization {
-            search_parts.push(format!("org:{}", org));
+            search_parts.push(format!("org:{org}"));
         }
 
         if let Some(lang) = &query.language {
-            search_parts.push(format!("language:{}", lang));
+            search_parts.push(format!("language:{lang}"));
         }
 
         for tag in &query.tags {
-            search_parts.push(format!("topic:{}", tag));
+            search_parts.push(format!("topic:{tag}"));
         }
 
         if !self.config.include_forks {
@@ -266,13 +266,13 @@ impl SearchProvider for GitHubCliProvider {
 
         // Add sort method (only if not best-match, which is the default)
         if query.sort != crate::git::SortMethod::BestMatch {
-            cmd.args(&["--sort", query.sort.as_str()]);
+            cmd.args(["--sort", query.sort.as_str()]);
         }
 
         // Add limit and request JSON output
         let limit = query.limit.unwrap_or(self.config.default_limit);
-        cmd.args(&["--limit", &limit.to_string()]);
-        cmd.args(&[
+        cmd.args(["--limit", &limit.to_string()]);
+        cmd.args([
             "--json",
             "fullName,name,description,url,stargazersCount,language,license",
         ]);

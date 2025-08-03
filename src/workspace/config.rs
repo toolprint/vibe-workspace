@@ -12,6 +12,8 @@ pub struct WorkspaceConfig {
     pub apps: AppIntegrations,
     #[serde(default)]
     pub preferences: Option<Preferences>,
+    #[serde(default)]
+    pub claude_agents: Option<ClaudeAgentsIntegration>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +131,15 @@ pub struct WindsurfIntegration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClaudeAgentsIntegration {
+    pub enabled: bool,
+    #[serde(default = "default_claude_agents_source_path")]
+    pub source_path: PathBuf,
+    #[serde(default = "default_claude_agents_target_path")]
+    pub target_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Preferences {
     #[serde(default)]
     pub page_sizes: PageSizes,
@@ -235,6 +246,14 @@ impl Default for WorkspaceConfig {
                 }),
             },
             preferences: Some(Preferences::default()),
+            claude_agents: Some(ClaudeAgentsIntegration {
+                enabled: true,
+                source_path: PathBuf::from(".").join("wshobson").join("agents"),
+                target_path: dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".claude")
+                    .join("agents"),
+            }),
         }
     }
 }
@@ -326,7 +345,7 @@ impl WorkspaceConfig {
                 // Check if URL contains the search term (handles owner/repo in URLs)
                 lower_url.contains(&lower_search) ||
                 // Check if the last part of the URL path matches
-                lower_url.split('/').last()
+                lower_url.split('/').next_back()
                     .map(|last| last.trim_end_matches(".git") == lower_search)
                     .unwrap_or(false)
             } else {
@@ -436,6 +455,18 @@ impl WorkspaceConfig {
                     .join("workspaces"),
                 template_dir: vibe_dir.join("templates").join("windsurf"),
                 default_template: "default".to_string(),
+            });
+        }
+
+        // Initialize claude_agents integration if missing
+        if self.claude_agents.is_none() {
+            self.claude_agents = Some(ClaudeAgentsIntegration {
+                enabled: true,
+                source_path: self.workspace.root.join("wshobson").join("agents"),
+                target_path: dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".claude")
+                    .join("agents"),
             });
         }
 
@@ -564,6 +595,17 @@ fn default_windsurf_template_dir() -> PathBuf {
         .join("windsurf")
 }
 
+fn default_claude_agents_source_path() -> PathBuf {
+    PathBuf::from(".").join("wshobson").join("agents")
+}
+
+fn default_claude_agents_target_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".claude")
+        .join("agents")
+}
+
 // Page size defaults
 fn default_main_menu_page_size() -> usize {
     15
@@ -603,14 +645,6 @@ impl Default for PageSizes {
             git_search_results: default_git_search_results_page_size(),
             management_menus: default_management_menus_page_size(),
             app_installer: default_app_installer_page_size(),
-        }
-    }
-}
-
-impl Default for Preferences {
-    fn default() -> Self {
-        Self {
-            page_sizes: PageSizes::default(),
         }
     }
 }

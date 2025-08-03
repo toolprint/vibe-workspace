@@ -68,7 +68,7 @@ impl UriHandler for GitHubUriHandler {
         match uri.command.as_str() {
             "install" => {
                 if let Some(path) = uri.params.get("path") {
-                    let url = format!("https://github.com/{}", path);
+                    let url = format!("https://github.com/{path}");
                     let mut manager = self.workspace_manager.lock().await;
                     CloneCommand::execute(url, None, false, false, &mut manager, &self.git_config)
                         .await?;
@@ -121,14 +121,14 @@ mod macos {
         // This is typically done during the build/install process
         // For now, we'll provide instructions
 
-        eprintln!("To register the '{}' URI scheme on macOS:", scheme);
+        eprintln!("To register the '{scheme}' URI scheme on macOS:");
         eprintln!("1. Add the following to your Info.plist:");
         eprintln!("   <key>CFBundleURLTypes</key>");
         eprintln!("   <array>");
         eprintln!("     <dict>");
         eprintln!("       <key>CFBundleURLSchemes</key>");
         eprintln!("       <array>");
-        eprintln!("         <string>{}</string>", scheme);
+        eprintln!("         <string>{scheme}</string>");
         eprintln!("       </array>");
         eprintln!("     </dict>");
         eprintln!("   </array>");

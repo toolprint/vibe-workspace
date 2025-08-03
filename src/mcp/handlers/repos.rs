@@ -244,7 +244,7 @@ impl VibeToolHandler for CloneTool {
             });
 
             let mut ws = workspace.lock().await;
-            execute_workflow(workflow, &mut *ws).await?;
+            execute_workflow(workflow, &mut ws).await?;
 
             Ok(json!({
                 "status": "success",
@@ -259,7 +259,7 @@ impl VibeToolHandler for CloneTool {
                 None,
                 false,
                 false,
-                &mut *ws,
+                &mut ws,
                 &git_config,
             )
             .await?;
@@ -384,7 +384,7 @@ impl VibeToolHandler for CreateRepositoryTool {
 
         // Create the repository
         let repo_path = creator
-            .create_local_repository(&owner, &repo_name, &mut *ws)
+            .create_local_repository(&owner, &repo_name, &mut ws)
             .await?;
 
         // Configure and open based on parameters

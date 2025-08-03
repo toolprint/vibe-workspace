@@ -396,7 +396,7 @@ impl VibeToolHandler for CloneRepoTool {
             path,
             open,
             install,
-            &mut *ws,
+            &mut ws,
             &git_config,
         )
         .await?;

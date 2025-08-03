@@ -137,7 +137,7 @@ impl ToolHandler for VibeMCPServer {
             Err(e) => {
                 // Return error as tool result
                 Ok(ToolResult {
-                    content: vec![ToolContent::text(format!("Error: {}", e))],
+                    content: vec![ToolContent::text(format!("Error: {e}"))],
                     is_error: Some(true),
                 })
             }

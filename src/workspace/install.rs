@@ -185,7 +185,7 @@ impl RepositoryInstaller {
 
     async fn clone_repository(&self, url: &str, target_path: &Path) -> Result<()> {
         let output = Command::new("git")
-            .args(&["clone", url, target_path.to_str().unwrap()])
+            .args(["clone", url, target_path.to_str().unwrap()])
             .output()
             .await
             .context("Failed to execute git clone")?;
@@ -211,7 +211,7 @@ impl RepositoryInstaller {
         use std::collections::HashMap;
 
         Ok(ConfigRepository {
-            name: format!("{}/{}", org, repo_name),
+            name: format!("{org}/{repo_name}"),
             path: path.to_path_buf(),
             url: Some(url.to_string()),
             branch: None, // Will be detected from the actual repository
