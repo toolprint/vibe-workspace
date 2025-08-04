@@ -210,6 +210,39 @@ pub fn format_repository_launch_item(
     parts.join(" ")
 }
 
+/// Format repository item for flat list (no recent indicators, consistent format)
+pub fn format_repository_flat_item(
+    name: &str,
+    apps: &[String],
+    git_status: Option<&GitStatus>,
+) -> String {
+    let mut parts = Vec::new();
+
+    // Repository name with git status color
+    parts.push(get_repo_name_color(name, git_status));
+
+    // Git status indicators (if not clean and available)
+    if let Some(status) = git_status {
+        let status_indicators = format_git_status_indicators(status);
+        if !status_indicators.is_empty() {
+            parts.push(status_indicators);
+        }
+
+        // Branch information
+        let branch_info = format_branch_info(Some(status));
+        if !branch_info.is_empty() {
+            parts.push(branch_info);
+        }
+    }
+
+    // App indicator - consistent format for all repositories
+    if !apps.is_empty() {
+        parts.push(format!("(+{})", style(apps.join(", ")).blue()));
+    }
+
+    parts.join(" ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -16,15 +16,18 @@ pub struct SmartAction {
 
 #[derive(Debug, Clone)]
 pub enum SmartActionType {
-    CloneAndOpen(String),       // URL or search term
-    ConfigureApps(Vec<String>), // Repo names that need app configuration
-    CreateRepository,           // Create new local repository
-    DiscoverRepos,              // Scan for new repositories
-    InstallApps,                // Install missing apps
-    OpenRecent(String),         // Repo name
-    SetupWorkspace,             // First-time setup
-    SyncRepositories,           // Pull updates for all repos
-    CleanupMissing,             // Remove missing repos from config
+    CloneAndOpen(String),              // URL or search term
+    ConfigureApps(Vec<String>),        // Repo names that need app configuration
+    ConfigureAndOpen(String),          // Configure app for repo and open
+    CreateRepository,                  // Create new local repository
+    DiscoverRepos,                     // Scan for new repositories
+    InstallApps,                       // Install missing apps
+    OpenRecent(String),                // Repo name
+    OpenWithPreferred(String, String), // Repo name, preferred app
+    QuickConfigureBatch(Vec<String>),  // Batch configure multiple repos
+    SetupWorkspace,                    // First-time setup
+    SyncRepositories,                  // Pull updates for all repos
+    CleanupMissing,                    // Remove missing repos from config
 }
 
 /// Represents a quick launch item
@@ -237,6 +240,109 @@ impl SmartMenu {
     /// Check if setup wizard should be shown
     pub fn should_show_setup_wizard(&self) -> bool {
         self.user_state.is_first_run() && self.user_state.user_preferences.show_setup_wizard
+    }
+
+    /// Get smart open actions (open repo with any available app)
+    pub fn get_smart_open_actions(&self, workspace_manager: &WorkspaceManager) -> Vec<SmartAction> {
+        let mut actions = Vec::new();
+        let recent_repos = self.user_state.get_recent_repos(5);
+        let all_repos = workspace_manager.list_repositories();
+
+        // Get configured repositories and their apps
+        let configured_repos: std::collections::HashMap<String, Vec<String>> = all_repos
+            .iter()
+            .filter(|repo| !repo.apps.is_empty())
+            .map(|repo| (repo.name.clone(), repo.apps.keys().cloned().collect()))
+            .collect();
+
+        // Create "Open with preferred app" actions for recent repos with known preferences
+        for recent_repo in recent_repos {
+            if let Some(last_app) = &recent_repo.last_app {
+                // Check if the app is available, regardless of configuration
+                if self.workspace_state.available_apps.contains(last_app) {
+                    let is_configured = configured_repos.contains_key(&recent_repo.repo_id);
+                    let description = if is_configured {
+                        format!("Open with your preferred app ({})", last_app)
+                    } else {
+                        format!("Open with {} (basic mode)", last_app)
+                    };
+
+                    actions.push(SmartAction {
+                        label: format!("🎯 Open {} → {}", recent_repo.repo_id, last_app),
+                        description,
+                        action_type: SmartActionType::OpenWithPreferred(
+                            recent_repo.repo_id.clone(),
+                            last_app.clone(),
+                        ),
+                        priority: 95, // High priority for preferred actions
+                    });
+                }
+            }
+        }
+
+        // Add universal opening options for recent repos without preferences
+        for recent_repo in recent_repos {
+            if recent_repo.last_app.is_none() && !actions.iter().any(|a| {
+                matches!(&a.action_type, SmartActionType::OpenWithPreferred(name, _) if name == &recent_repo.repo_id)
+            }) {
+                // Add opening options for the most common available apps
+                for app in &self.workspace_state.available_apps {
+                    if matches!(app.as_str(), "vscode" | "cursor" | "warp" | "iterm2") {
+                        let is_configured = configured_repos.contains_key(&recent_repo.repo_id);
+                        let description = if is_configured {
+                            format!("Open with {} (configured)", app)
+                        } else {
+                            format!("Open with {} (basic)", app)
+                        };
+
+                        actions.push(SmartAction {
+                            label: format!("📂 Open {} → {}", recent_repo.repo_id, app),
+                            description,
+                            action_type: SmartActionType::OpenWithPreferred(
+                                recent_repo.repo_id.clone(),
+                                app.clone(),
+                            ),
+                            priority: 80,
+                        });
+
+                        // Only show one app option per repo to avoid clutter
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Add "Configure and open" for unconfigured repos (now as enhancement, not requirement)
+        for unconfigured_repo in &self.workspace_state.unconfigured_repos {
+            if self.workspace_state.available_apps.len() >= 1 && !actions.iter().any(|a| {
+                matches!(&a.action_type, SmartActionType::OpenWithPreferred(name, _) if name == unconfigured_repo)
+            }) {
+                actions.push(SmartAction {
+                    label: format!("⚙️ Configure templates for {}", unconfigured_repo),
+                    description: "Set up advanced templates and automation".to_string(),
+                    action_type: SmartActionType::ConfigureAndOpen(unconfigured_repo.clone()),
+                    priority: 70, // Lower priority since configuration is now optional
+                });
+            }
+        }
+
+        // Add batch configuration for multiple unconfigured repos (as enhancement)
+        if self.workspace_state.unconfigured_repos.len() > 3 {
+            let count = self.workspace_state.unconfigured_repos.len();
+            actions.push(SmartAction {
+                label: format!("⚙️ Set up templates for {} repos", count),
+                description: "Configure advanced templates and automation".to_string(),
+                action_type: SmartActionType::QuickConfigureBatch(
+                    self.workspace_state.unconfigured_repos.clone(),
+                ),
+                priority: 60, // Lower priority since templates are enhancements
+            });
+        }
+
+        // Sort by priority and limit to top 5 smart open actions
+        actions.sort_by(|a, b| b.priority.cmp(&a.priority));
+        actions.truncate(5);
+        actions
     }
 }
 

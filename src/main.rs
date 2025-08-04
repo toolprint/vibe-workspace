@@ -834,34 +834,62 @@ async fn main() -> Result<()> {
                         .open_repo_with_app_options(repo_name, &app_name, no_itermocil)
                         .await?;
                 } else {
-                    // Open with default or show available apps
-                    let apps = workspace_manager.list_apps_for_repo(repo_name)?;
-                    if apps.is_empty() {
-                        display_println!(
-                        "{} No apps configured for repository '{}'. Configure with: vibe apps configure {} <app>",
-                        style("⚠️").yellow(),
-                        style(repo_name).cyan(),
-                        style(repo_name).cyan()
-                    );
-                    } else if apps.len() == 1 {
+                    // Open with preferred app or show available options
+                    let configured_apps = workspace_manager.list_apps_for_repo(repo_name)?;
+
+                    if configured_apps.len() == 1 {
                         // Only one app configured, use it
-                        let (app_name, _) = &apps[0];
+                        let (app_name, _) = &configured_apps[0];
                         workspace_manager
-                            .open_repo_with_app(repo_name, app_name)
+                            .open_repo_with_app_options(repo_name, app_name, no_itermocil)
                             .await?;
-                    } else {
-                        // Multiple apps configured, show options
+                    } else if configured_apps.len() > 1 {
+                        // Multiple apps configured, show configured options
                         display_println!(
                             "{} Multiple apps configured for '{}'. Please specify one:",
                             style("🤔").yellow(),
                             style(repo_name).cyan()
                         );
-                        for (app_name, _template) in &apps {
+                        for (app_name, _template) in &configured_apps {
                             display_println!(
                                 "  {} vibe open {} --app {}",
                                 style("→").dim(),
                                 repo_name,
                                 style(app_name).green()
+                            );
+                        }
+                    } else {
+                        // No apps configured, show available apps with basic opening
+                        display_println!(
+                            "{} No templates configured for '{}'. Available apps for basic opening:",
+                            style("ℹ️").blue(),
+                            style(repo_name).cyan()
+                        );
+
+                        let mut available_apps = Vec::new();
+                        for app in &["vscode", "cursor", "warp", "iterm2", "wezterm", "windsurf"] {
+                            if workspace_manager.is_app_available(app).await {
+                                available_apps.push(*app);
+                                display_println!(
+                                    "  {} vibe open {} --app {} {} (basic mode)",
+                                    style("→").dim(),
+                                    repo_name,
+                                    style(app).green(),
+                                    style("").dim()
+                                );
+                            }
+                        }
+
+                        if available_apps.is_empty() {
+                            display_println!(
+                                "{} No supported apps found on this system",
+                                style("⚠️").yellow()
+                            );
+                        } else {
+                            display_println!(
+                                "\n{} Or configure templates for enhanced features: vibe apps configure {} <app>",
+                                style("💡").yellow(),
+                                style(repo_name).cyan()
                             );
                         }
                     }

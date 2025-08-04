@@ -140,35 +140,48 @@ impl VibeToolHandler for OpenRepoTool {
                 "app": app_name
             }))
         } else {
-            // Open with default or show available apps
-            let apps = ws.list_apps_for_repo(repo)?;
-            if apps.is_empty() {
-                Ok(json!({
-                    "status": "error",
-                    "message": format!("No apps configured for repository '{}'. Configure with: vibe apps configure {} <app>", repo, repo)
-                }))
-            } else if apps.len() == 1 {
+            // Open with preferred or show available apps
+            let configured_apps = ws.list_apps_for_repo(repo)?;
+            if configured_apps.len() == 1 {
                 // Only one app configured, use it
-                let (app_name, _) = &apps[0];
-                ws.open_repo_with_app(repo, app_name).await?;
+                let (app_name, _) = &configured_apps[0];
+                ws.open_repo_with_app_options(repo, app_name, false).await?;
 
                 Ok(json!({
                     "status": "success",
                     "repository": repo,
-                    "app": app_name
+                    "app": app_name,
+                    "mode": "configured"
+                }))
+            } else if configured_apps.len() > 1 {
+                // Multiple apps configured, return options
+                let options: Vec<String> = configured_apps
+                    .iter()
+                    .map(|(name, _)| name.clone())
+                    .collect();
+                Ok(json!({
+                    "status": "multiple_options",
+                    "message": format!("Multiple apps configured for '{}'. Specify one with app parameter.", repo),
+                    "configured_apps": options
                 }))
             } else {
-                // Multiple apps configured, return options
-                Ok(json!({
-                    "status": "multiple_apps",
-                    "repository": repo,
-                    "available_apps": apps.into_iter().map(|(app, template)| {
-                        json!({
+                // No apps configured, try with most common available app (VS Code)
+                for app in &["vscode", "cursor", "warp", "iterm2"] {
+                    if ws.is_app_available(app).await {
+                        ws.open_repo_with_app_options(repo, app, false).await?;
+                        return Ok(json!({
+                            "status": "success",
+                            "repository": repo,
                             "app": app,
-                            "template": template
-                        })
-                    }).collect::<Vec<_>>(),
-                    "message": "Multiple apps configured. Please specify one with the 'app' parameter."
+                            "mode": "basic",
+                            "message": format!("Opened with {} in basic mode. Configure templates with: vibe apps configure {} {}", app, repo, app)
+                        }));
+                    }
+                }
+
+                Ok(json!({
+                    "status": "error",
+                    "message": format!("No supported apps found on system for repository '{}'", repo)
                 }))
             }
         }

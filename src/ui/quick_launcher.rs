@@ -111,14 +111,11 @@ impl QuickLauncher {
                         (None, None)
                     };
 
-                // Create display string using shared formatting
-                let display_string = formatting::format_repository_launch_item(
+                // Create display string using flat formatting (no recent indicators)
+                let display_string = formatting::format_repository_flat_item(
                     &repo.name,
                     &repo.configured_apps,
                     git_status.as_ref(),
-                    recent_rank,
-                    last_accessed.as_deref(),
-                    last_app.as_deref(),
                 );
 
                 LaunchItem {
@@ -146,28 +143,18 @@ impl QuickLauncher {
         let mut other_items = other_items;
         other_items.sort_by(|a, b| a.name.cmp(&b.name));
 
-        // Create display options with section headers
+        // Create display options for all repositories
         let mut display_options = Vec::new();
         let mut item_map = std::collections::HashMap::new();
 
-        // Add recent repositories section if any exist
-        if !recent_items.is_empty() {
-            display_options.push("🏃 ── Recent Repositories ──".to_string());
-            for item in &recent_items {
-                display_options.push(item.display_string.clone());
-                item_map.insert(item.display_string.clone(), item);
-            }
+        // Add all repositories in a single flat list (recent first, then others)
+        for item in &recent_items {
+            display_options.push(item.display_string.clone());
+            item_map.insert(item.display_string.clone(), item);
         }
-
-        // Add all repositories section if there are non-recent ones
-        if !other_items.is_empty() {
-            if !recent_items.is_empty() {
-                display_options.push("📁 ── All Repositories ──".to_string());
-            }
-            for item in &other_items {
-                display_options.push(item.display_string.clone());
-                item_map.insert(item.display_string.clone(), item);
-            }
+        for item in &other_items {
+            display_options.push(item.display_string.clone());
+            item_map.insert(item.display_string.clone(), item);
         }
 
         // Show selection UI
@@ -176,43 +163,28 @@ impl QuickLauncher {
             "   {} repositories available",
             recent_items.len() + other_items.len()
         );
-        if !recent_items.is_empty() {
-            println!("   {} recent repositories", recent_items.len());
-        }
 
-        // Selection loop to handle section headers
-        let selected_item = loop {
-            let selected_display_result = Select::new("Repository:", display_options.clone())
-                .with_help_message("Use arrow keys to navigate, type to filter • ESC to exit")
-                .with_page_size(workspace_manager.get_quick_launch_page_size())
-                .prompt();
+        // Repository selection
+        let selected_display_result = Select::new("Repository:", display_options.clone())
+            .with_help_message("Use arrow keys to navigate, type to filter • ESC to exit")
+            .with_page_size(workspace_manager.get_quick_launch_page_size())
+            .prompt();
 
-            let selected_display = match selected_display_result {
-                Ok(value) => value,
-                Err(InquireError::OperationCanceled) => {
-                    println!("{} Repository selection cancelled", style("ℹ️").blue());
-                    return Ok(());
-                }
-                Err(error) => return Err(anyhow::Error::from(error)),
-            };
-
-            // Handle section headers (ignore and re-prompt)
-            if selected_display.starts_with("🏃 ──") || selected_display.starts_with("📁 ──")
-            {
-                println!(
-                    "{} Section headers are not selectable. Please choose a repository.",
-                    style("ℹ️").blue()
-                );
-                continue;
+        let selected_display = match selected_display_result {
+            Ok(value) => value,
+            Err(InquireError::OperationCanceled) => {
+                println!("{} Repository selection cancelled", style("ℹ️").blue());
+                return Ok(());
             }
-
-            // Find the selected repository
-            if let Some(selected_item) = item_map.get(&selected_display) {
-                break selected_item;
-            } else {
-                return Err(anyhow::anyhow!("Selected repository not found"));
-            }
+            Err(error) => return Err(anyhow::Error::from(error)),
         };
+
+        let selected_item = item_map.get(&selected_display).copied().ok_or_else(|| {
+            anyhow::anyhow!(
+                "Selected repository '{}' not found in item map",
+                selected_display
+            )
+        })?;
 
         // Handle app selection and launch
         self.launch_repository(workspace_manager, selected_item)

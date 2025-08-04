@@ -1449,14 +1449,24 @@ impl WorkspaceManager {
             .find(|r| r.name == repo_name)
             .context("Repository not found")?;
 
-        if !repo.is_app_enabled(app) {
-            anyhow::bail!(
-                "App '{}' is not configured for repository '{}'",
-                app,
-                repo_name
-            );
+        // Use configured opening if available, otherwise fall back to basic opening
+        if repo.is_app_enabled(app) {
+            // Use configured opening with templates and automation
+            self.open_repo_with_configured_app(repo, app, no_itermocil)
+                .await
+        } else {
+            // Use basic opening without configuration
+            self.open_repo_with_basic_app(repo, app).await
         }
+    }
 
+    /// Open repository with configured app (templates and automation)
+    async fn open_repo_with_configured_app(
+        &self,
+        repo: &Repository,
+        app: &str,
+        no_itermocil: bool,
+    ) -> Result<()> {
         match app {
             "warp" => {
                 crate::apps::open_with_warp(&self.config, repo, &self.template_manager).await?;
@@ -1492,6 +1502,118 @@ impl WorkspaceManager {
                 anyhow::bail!("Unknown app: {}", app);
             }
         }
+
+        Ok(())
+    }
+
+    /// Open repository with basic app (no configuration required)
+    async fn open_repo_with_basic_app(&self, repo: &Repository, app: &str) -> Result<()> {
+        // Get full path to repository
+        let repo_path = self.config.workspace.root.join(&repo.path);
+
+        // Check if app is available on system
+        if !self.is_app_available(app).await {
+            anyhow::bail!("App '{}' is not available on this system", app);
+        }
+
+        println!(
+            "{} Opening {} with {} (basic mode - no custom templates)",
+            style("📂").blue(),
+            style(&repo.name).cyan(),
+            style(app).blue()
+        );
+
+        match app {
+            "vscode" => {
+                // Basic: Open folder directly with code command
+                let status = std::process::Command::new("code")
+                    .arg(&repo_path)
+                    .status()
+                    .context("Failed to execute VS Code")?;
+
+                if !status.success() {
+                    anyhow::bail!("VS Code failed to open repository");
+                }
+            }
+            "cursor" => {
+                // Basic: Open folder directly with cursor command
+                let status = std::process::Command::new("cursor")
+                    .arg(&repo_path)
+                    .status()
+                    .context("Failed to execute Cursor")?;
+
+                if !status.success() {
+                    anyhow::bail!("Cursor failed to open repository");
+                }
+            }
+            "windsurf" => {
+                // Basic: Open folder directly with windsurf command
+                let status = std::process::Command::new("windsurf")
+                    .arg(&repo_path)
+                    .status()
+                    .context("Failed to execute Windsurf")?;
+
+                if !status.success() {
+                    anyhow::bail!("Windsurf failed to open repository");
+                }
+            }
+            "warp" => {
+                // Basic: Open new tab in Warp with cd to repo
+                let status = std::process::Command::new("open")
+                    .args(["-a", "Warp", &format!("--args cd {}", repo_path.display())])
+                    .status()
+                    .context("Failed to execute Warp")?;
+
+                if !status.success() {
+                    anyhow::bail!("Warp failed to open repository");
+                }
+            }
+            "iterm2" => {
+                // Basic: Open new tab in iTerm2 with cd to repo
+                let applescript = format!(
+                    r#"tell application "iTerm2"
+                        activate
+                        tell current window
+                            create tab with default profile
+                            tell current session
+                                write text "cd '{}'"
+                            end tell
+                        end tell
+                    end tell"#,
+                    repo_path.display()
+                );
+
+                let status = std::process::Command::new("osascript")
+                    .args(["-e", &applescript])
+                    .status()
+                    .context("Failed to execute iTerm2 AppleScript")?;
+
+                if !status.success() {
+                    anyhow::bail!("iTerm2 failed to open repository");
+                }
+            }
+            "wezterm" => {
+                // Basic: Open new tab in WezTerm with cd to repo
+                let status = std::process::Command::new("wezterm")
+                    .args(["cli", "spawn", "--cwd", &repo_path.to_string_lossy()])
+                    .status()
+                    .context("Failed to execute WezTerm")?;
+
+                if !status.success() {
+                    anyhow::bail!("WezTerm failed to open repository");
+                }
+            }
+            _ => {
+                anyhow::bail!("Unknown app: {}", app);
+            }
+        }
+
+        println!(
+            "{} Successfully opened {} with {}",
+            style("✓").green(),
+            style(&repo.name).cyan(),
+            style(app).blue()
+        );
 
         Ok(())
     }

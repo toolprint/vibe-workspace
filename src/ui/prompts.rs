@@ -5,10 +5,108 @@ use inquire::{Confirm, InquireError, MultiSelect, Select, Text};
 use std::path::PathBuf;
 
 use crate::git::{GitConfig, SearchCommand};
-use crate::ui::formatting;
-use crate::ui::smart_menu::{SmartActionType, SmartMenu};
+use crate::ui::smart_menu::{SmartAction, SmartActionType, SmartMenu};
 use crate::ui::state::VibeState;
 use crate::workspace::WorkspaceManager;
+
+/// Represents a menu option with optional keyboard shortcut
+#[derive(Debug, Clone)]
+pub struct MenuOption {
+    pub key: Option<char>,
+    pub label: String,
+    pub description: String,
+    pub action_type: MenuActionType,
+}
+
+/// Types of menu actions
+#[derive(Debug, Clone)]
+pub enum MenuActionType {
+    SingleKey(char),
+    SmartAction(SmartActionType),
+    SmartOpen(SmartAction),
+    Navigation,
+}
+
+/// Menu system errors
+#[derive(Debug)]
+pub enum MenuError {
+    InvalidKeyPress(char),
+    ContextualActionUnavailable(char),
+    NavigationError,
+}
+
+impl std::fmt::Display for MenuError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MenuError::InvalidKeyPress(key) => write!(f, "Invalid key press: '{}'", key),
+            MenuError::ContextualActionUnavailable(key) => {
+                write!(f, "Action '{}' not available in current context", key)
+            }
+            MenuError::NavigationError => write!(f, "Navigation error occurred"),
+        }
+    }
+}
+
+impl std::error::Error for MenuError {}
+
+impl MenuOption {
+    pub fn new(key: char, label: &str, description: &str) -> Self {
+        Self {
+            key: Some(key),
+            label: format!("({}) {}", key, label),
+            description: description.to_string(),
+            action_type: MenuActionType::SingleKey(key),
+        }
+    }
+
+    pub fn from_smart_action(action: SmartAction) -> Self {
+        // Extract key from label if it follows "(key) ..." format
+        let (key, label) = if action.label.starts_with('(') && action.label.len() > 3 {
+            if let Some(closing_paren) = action.label.find(')') {
+                if closing_paren == 2 {
+                    // "(x)" format
+                    let key_char = action.label.chars().nth(1);
+                    let remaining_label = action.label[4..].to_string(); // Skip "(x) "
+                    (key_char, remaining_label)
+                } else {
+                    (None, action.label.clone())
+                }
+            } else {
+                (None, action.label.clone())
+            }
+        } else {
+            (None, action.label.clone())
+        };
+
+        Self {
+            key,
+            label,
+            description: action.description.clone(),
+            action_type: MenuActionType::SmartAction(action.action_type.clone()),
+        }
+    }
+
+    pub fn from_smart_open_action(action: SmartAction) -> Self {
+        Self {
+            key: None,
+            label: action.label.clone(),
+            description: action.description.clone(),
+            action_type: MenuActionType::SmartOpen(action),
+        }
+    }
+
+    pub fn display_label(&self) -> String {
+        // If the label already contains a key in parentheses at the start, don't add another
+        if self.label.starts_with('(') && self.label.chars().nth(2) == Some(')') {
+            self.label.clone()
+        } else {
+            match &self.key {
+                Some(key) => format!("({}) {}", key, self.label),
+                None => self.label.clone(),
+            }
+        }
+    }
+}
 
 /// Handle prompt results to distinguish between ESC key navigation and fatal errors
 /// Returns:
@@ -94,6 +192,7 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
         println!();
     } else {
         println!("🚀 Welcome to Vibe Workspace!");
+        println!("💡 Tip: Use single-key shortcuts for faster navigation (press key to select menu items)");
         println!();
     }
 
@@ -101,93 +200,82 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
         // Reload smart menu to get fresh state
         let smart_menu = SmartMenu::new(workspace_manager).await?;
 
-        // Build dynamic menu options
+        // Build flat menu options without section headers
         let mut menu_options = Vec::new();
 
-        // Add quick launch items
+        // Core actions (always visible with single-key shortcuts)
         let quick_items = smart_menu.get_quick_launch_items();
         if !quick_items.is_empty() {
-            menu_options.push(format!("{}", style("🏃 ── Quick Launch ──").dim()));
-
-            for item in &quick_items {
-                let label = formatting::format_repository_quick_launch(
-                    item.number,
-                    &item.repo_name,
-                    &item.last_accessed,
-                    item.last_app.as_deref(),
-                    None, // No git status available in main menu context
-                );
-                menu_options.push(label);
-            }
-
-            menu_options.push(format!("{}", style("🧠 ── Smart Actions ──").dim()));
+            menu_options.push(MenuOption::new(
+                'q',
+                "🚀 Quick Launch",
+                "Recent repositories (1-9)",
+            ));
         }
 
-        // Add smart actions
-        let smart_actions = smart_menu.get_smart_actions();
-        for action in &smart_actions {
-            menu_options.push(action.label.clone());
+        menu_options.push(MenuOption::new(
+            'o',
+            "📂 Open repo",
+            "Open repository with app",
+        ));
+        menu_options.push(MenuOption::new(
+            'n',
+            "🆕 Create new repo",
+            "Create local repository",
+        ));
+        menu_options.push(MenuOption::new(
+            'c',
+            "📥 Clone GitHub repo",
+            "Search and clone from GitHub",
+        ));
+        menu_options.push(MenuOption::new(
+            'a',
+            "⚙️ Manage Apps",
+            "Configure apps for repositories",
+        ));
+        menu_options.push(MenuOption::new(
+            'r',
+            "🔀 Manage Repos",
+            "Repository management",
+        ));
+        menu_options.push(MenuOption::new(
+            's',
+            "⚙️ Settings",
+            "Configuration and templates",
+        ));
+
+        // Contextual actions (filtered by relevance)
+        let contextual_actions = get_contextual_actions(&smart_menu);
+        for action in contextual_actions {
+            menu_options.push(MenuOption::from_smart_action(action));
         }
 
-        // Add standard menu items
-        menu_options.push(format!("{}", style("🏠 ── Main Menu ──").dim()));
-        let mut standard_options = vec![
-            "🚀 Launch app".to_string(),
-            "🔀 Manage repos".to_string(),
-            "⚙️ Settings".to_string(),
-        ];
-        menu_options.append(&mut standard_options);
+        // No need for single-key shortcuts hint - just show the menu directly
 
-        // Apply navigation formatting (main menu gets [Exit])
-        menu_options = create_menu_with_navigation(menu_options, true);
+        // Create display options for Inquire Select
+        let display_options: Vec<String> =
+            menu_options.iter().map(|opt| opt.display_label()).collect();
 
-        // Create the select prompt
-        let selection_result = Select::new("What would you like to do?", menu_options)
+        let menu_options_with_nav = create_menu_with_navigation(display_options, true);
+
+        let selection_result = Select::new("What would you like to do?", menu_options_with_nav)
             .with_starting_cursor(if quick_items.is_empty() { 0 } else { 1 })
             .with_page_size(workspace_manager.get_main_menu_page_size())
-            .with_help_message("Use arrow keys to navigate • ESC to exit")
+            .with_help_message("Use arrow keys to navigate • Enter to select • ESC to exit • Type shortcut key+ENTER for quick nav")
             .prompt();
 
         let selection = match handle_prompt_result(selection_result)? {
             Some(selection) => selection,
             None => {
-                // ESC pressed in main menu - exit
+                // ESC pressed - exit
                 println!("👋 Goodbye!");
                 break;
             }
         };
 
-        // Handle number key shortcuts (1-9) for quick launch
-        if let Some(digit) = selection.chars().next().and_then(|c| c.to_digit(10)) {
-            if (1..=9).contains(&digit) {
-                let index = (digit - 1) as usize;
-                if index < quick_items.len() {
-                    let item = &quick_items[index];
-                    launch_repository(workspace_manager, &item.repo_name, item.last_app.as_deref())
-                        .await?;
-                    continue;
-                }
-            }
-        }
-
-        // Handle smart actions
-        let mut handled = false;
-        for action in &smart_actions {
-            if selection == action.label {
-                handle_smart_action(workspace_manager, &action.action_type).await?;
-                handled = true;
-                break;
-            }
-        }
-
-        if handled {
-            println!();
-            continue;
-        }
-
-        // Handle navigation options first
-        if let Some(action) = get_navigation_action(&selection) {
-            match action {
+        // Handle navigation
+        if let Some(nav_action) = get_navigation_action(&selection) {
+            match nav_action {
                 "Exit" => {
                     println!("👋 Goodbye!");
                     break;
@@ -196,29 +284,24 @@ pub async fn run_menu_mode(workspace_manager: &mut WorkspaceManager) -> Result<(
             }
         }
 
-        // Handle standard menu items
-        match selection.as_str() {
-            "🚀 Launch app" => {
-                launch_repository_with_cache(workspace_manager).await?;
-            }
-            "🔀 Manage repos" => {
-                manage_repos_interactive(workspace_manager).await?;
-            }
-            "⚙️ Settings" => {
-                configure_vibes_interactive(workspace_manager).await?;
-            }
-            _ => {
-                // Skip section headers and separators
-                if selection.contains("──") || selection == NAVIGATION_SEPARATOR {
-                    continue;
-                }
+        // Find and handle the selected menu option
+        if let Some(menu_option) = find_menu_option_by_label(&menu_options, &selection) {
+            if handle_menu_option_action(workspace_manager, menu_option).await? {
+                println!();
+                continue;
             }
         }
-
-        println!();
     }
 
     Ok(())
+}
+
+/// Find menu option by its display label
+fn find_menu_option_by_label<'a>(
+    menu_options: &'a [MenuOption],
+    label: &str,
+) -> Option<&'a MenuOption> {
+    menu_options.iter().find(|opt| opt.display_label() == label)
 }
 
 async fn search_and_clone_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
@@ -525,7 +608,66 @@ async fn manage_groups_interactive(_workspace_manager: &WorkspaceManager) -> Res
     Ok(())
 }
 
-async fn configure_apps_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+/// New Manage Apps menu - shows list of apps to select and manage
+async fn manage_apps_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    loop {
+        let apps = vec![
+            "warp".to_string(),
+            "iterm2".to_string(),
+            "vscode".to_string(),
+            "cursor".to_string(),
+            "windsurf".to_string(),
+            "wezterm".to_string(),
+        ];
+
+        let menu_options = create_menu_with_navigation(apps, false);
+        let action_result = Select::new("📱 App Management:", menu_options)
+            .with_page_size(workspace_manager.get_management_menus_page_size())
+            .with_help_message("Select app to manage • ESC to go back")
+            .prompt();
+
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        // Handle app selection
+        match action.as_str() {
+            "warp" => manage_specific_app_interactive(workspace_manager, "warp").await?,
+            "iterm2" => manage_specific_app_interactive(workspace_manager, "iterm2").await?,
+            "vscode" => manage_specific_app_interactive(workspace_manager, "vscode").await?,
+            "cursor" => manage_specific_app_interactive(workspace_manager, "cursor").await?,
+            "windsurf" => manage_specific_app_interactive(workspace_manager, "windsurf").await?,
+            "wezterm" => manage_specific_app_interactive(workspace_manager, "wezterm").await?,
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
+        }
+
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Configure specific app for repositories (moved from old configure_apps_interactive)
+async fn configure_apps_for_repositories_interactive(
+    workspace_manager: &mut WorkspaceManager,
+) -> Result<()> {
     let config = workspace_manager.get_config();
 
     if config.repositories.is_empty() {
@@ -1016,8 +1158,42 @@ async fn open_repository_with_filter(workspace_manager: &WorkspaceManager) -> Re
     Ok(())
 }
 
-/// Fast repository launcher using cached data
+/// Enhanced repository launcher with contextual configuration options
 async fn launch_repository_with_cache(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    // Check for unconfigured repositories first
+    let repos = workspace_manager.list_repositories();
+    let unconfigured_repos: Vec<String> = repos
+        .iter()
+        .filter(|repo| repo.apps.is_empty())
+        .map(|repo| repo.name.clone())
+        .collect();
+
+    // If there are unconfigured repos, offer contextual help
+    if !unconfigured_repos.is_empty() && unconfigured_repos.len() <= 3 {
+        println!(
+            "{} Found {} unconfigured repositor{}:",
+            style("ℹ️").blue(),
+            unconfigured_repos.len(),
+            if unconfigured_repos.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            }
+        );
+
+        for repo in &unconfigured_repos {
+            println!("  • {}", style(repo).cyan());
+        }
+
+        if prompt_yes_no(
+            "\nWould you like to configure apps for these repositories first?",
+            false,
+        )? {
+            configure_apps_for_repos(workspace_manager, &unconfigured_repos).await?;
+            println!();
+        }
+    }
+
     // Get the quick launcher with cache system
     let launcher = workspace_manager.get_quick_launcher().await?;
 
@@ -1034,9 +1210,9 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
     loop {
         let actions = vec![
             "Show repository status".to_string(),
-            "Search & clone from GitHub".to_string(),
-            "Discover new repositories".to_string(),
-            "Sync repositories".to_string(),
+            "Configure apps for repositories".to_string(),
+            "Scan workspace for repos".to_string(),
+            "Fetch and pull from remote".to_string(),
             "Execute command on repositories".to_string(),
             "Manage groups".to_string(),
         ];
@@ -1068,13 +1244,13 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
             "Show repository status" => {
                 show_status_interactive(workspace_manager).await?;
             }
-            "Search & clone from GitHub" => {
-                search_and_clone_interactive(workspace_manager).await?;
+            "Configure apps for repositories" => {
+                configure_apps_for_repositories_interactive(workspace_manager).await?;
             }
-            "Discover new repositories" => {
+            "Scan workspace for repos" => {
                 discover_repositories_interactive(workspace_manager).await?;
             }
-            "Sync repositories" => {
+            "Fetch and pull from remote" => {
                 sync_repositories_interactive(workspace_manager).await?;
             }
             "Execute command on repositories" => {
@@ -1100,8 +1276,6 @@ async fn manage_repos_interactive(workspace_manager: &mut WorkspaceManager) -> R
 async fn configure_vibes_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
     loop {
         let actions = vec![
-            "Configure apps for repositories".to_string(),
-            "Manage app templates".to_string(),
             "Factory Reset".to_string(),
             "Create Backup".to_string(),
             "Restore from Backup".to_string(),
@@ -1131,12 +1305,6 @@ async fn configure_vibes_interactive(workspace_manager: &mut WorkspaceManager) -
         }
 
         match action.as_str() {
-            "Configure apps for repositories" => {
-                configure_apps_interactive(workspace_manager).await?;
-            }
-            "Manage app templates" => {
-                manage_templates_interactive(workspace_manager).await?;
-            }
             "Factory Reset" => {
                 factory_reset_interactive(workspace_manager).await?;
             }
@@ -1343,6 +1511,15 @@ async fn handle_smart_action(
         SmartActionType::OpenRecent(repo_name) => {
             launch_repository(workspace_manager, repo_name, None).await?;
         }
+        SmartActionType::OpenWithPreferred(repo_name, app_name) => {
+            launch_repository(workspace_manager, repo_name, Some(app_name)).await?;
+        }
+        SmartActionType::ConfigureAndOpen(repo_name) => {
+            configure_and_open_repository(workspace_manager, repo_name).await?;
+        }
+        SmartActionType::QuickConfigureBatch(repo_names) => {
+            configure_apps_for_repos(workspace_manager, repo_names).await?;
+        }
     }
     Ok(())
 }
@@ -1409,6 +1586,38 @@ async fn launch_repository(
         style(repo_name).cyan(),
         style(&app_to_use).blue()
     );
+
+    Ok(())
+}
+
+/// Configure an app for a repository and then open it
+async fn configure_and_open_repository(
+    workspace_manager: &mut WorkspaceManager,
+    repo_name: &str,
+) -> Result<()> {
+    println!(
+        "{} Configuring app for {}",
+        style("⚙️").blue(),
+        style(repo_name).cyan()
+    );
+
+    // Let user choose an app
+    let app_name = prompt_app_selection()?;
+
+    // Configure the app for this repo
+    workspace_manager
+        .configure_app_for_repo(repo_name, &app_name, "default")
+        .await?;
+
+    println!(
+        "{} Configured {} for {}",
+        style("✓").green(),
+        style(&app_name).blue(),
+        style(repo_name).cyan()
+    );
+
+    // Now open the repository with the configured app
+    launch_repository(workspace_manager, repo_name, Some(&app_name)).await?;
 
     Ok(())
 }
@@ -1669,6 +1878,634 @@ async fn restore_backup_interactive(workspace_manager: &mut WorkspaceManager) ->
 
     // Let the workspace manager handle the interactive selection and restoration
     workspace_manager.restore_from_backup(None, false).await?;
+
+    Ok(())
+}
+
+/// Extract a single key from a selection if it follows the "(key) ..." format
+fn extract_single_key_from_selection(selection: &str) -> Option<char> {
+    if selection.starts_with('(') && selection.len() > 3 {
+        if let Some(closing_paren) = selection.find(')') {
+            if closing_paren == 2 {
+                // "(x)" format
+                return selection.chars().nth(1);
+            }
+        }
+    }
+    None
+}
+
+/// Handle a menu option action based on its type
+async fn handle_menu_option_action(
+    workspace_manager: &mut WorkspaceManager,
+    menu_option: &MenuOption,
+) -> Result<bool> {
+    match &menu_option.action_type {
+        MenuActionType::SingleKey(key) => {
+            match key {
+                'q' => {
+                    let smart_menu = SmartMenu::new(workspace_manager).await?;
+                    let quick_items = smart_menu.get_quick_launch_items();
+                    show_quick_launch_submenu(workspace_manager, &quick_items).await?;
+                    Ok(true)
+                }
+                'o' => {
+                    launch_repository_with_cache(workspace_manager).await?;
+                    Ok(true)
+                }
+                'n' => {
+                    // Use the same workflow as SmartActionType::CreateRepository
+                    use crate::ui::workflows::{execute_workflow, CreateRepositoryWorkflow};
+                    let workflow = Box::new(CreateRepositoryWorkflow {
+                        suggested_name: None,
+                        app: None,
+                        skip_configure: false,
+                        skip_open: false,
+                    });
+                    execute_workflow(workflow, workspace_manager).await?;
+                    Ok(true)
+                }
+                'c' => {
+                    search_and_clone_interactive(workspace_manager).await?;
+                    Ok(true)
+                }
+                'a' => {
+                    manage_apps_interactive(workspace_manager).await?;
+                    Ok(true)
+                }
+                'r' => {
+                    manage_repos_interactive(workspace_manager).await?;
+                    Ok(true)
+                }
+                's' => {
+                    configure_vibes_interactive(workspace_manager).await?;
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        }
+        MenuActionType::SmartAction(action_type) => {
+            handle_smart_action(workspace_manager, action_type).await?;
+            Ok(true)
+        }
+        MenuActionType::SmartOpen(action) => {
+            handle_smart_action(workspace_manager, &action.action_type).await?;
+            Ok(true)
+        }
+        MenuActionType::Navigation => {
+            // Navigation handled elsewhere
+            Ok(false)
+        }
+    }
+}
+
+/// Get contextual smart actions with appropriate keyboard shortcuts
+fn get_contextual_actions(smart_menu: &SmartMenu) -> Vec<SmartAction> {
+    let mut contextual_actions = Vec::new();
+    let smart_actions = smart_menu.get_smart_actions();
+
+    // Assign keyboard shortcuts to contextual actions based on priority and type
+    for action in smart_actions {
+        let mut contextual_action = action.clone();
+
+        // Assign single-key shortcuts based on action type
+        match &action.action_type {
+            crate::ui::smart_menu::SmartActionType::SetupWorkspace => {
+                contextual_action.label = format!("(w) {}", action.label.trim_start_matches("🎉 "));
+                contextual_actions.push(contextual_action);
+            }
+            crate::ui::smart_menu::SmartActionType::DiscoverRepos => {
+                contextual_action.label = format!("(d) {}", action.label.trim_start_matches("🔍 "));
+                contextual_actions.push(contextual_action);
+            }
+            crate::ui::smart_menu::SmartActionType::InstallApps => {
+                contextual_action.label = format!("(i) {}", action.label.trim_start_matches("📱 "));
+                contextual_actions.push(contextual_action);
+            }
+            crate::ui::smart_menu::SmartActionType::CleanupMissing => {
+                contextual_action.label = format!("(u) {}", action.label.trim_start_matches("🧹 "));
+                contextual_actions.push(contextual_action);
+            }
+            crate::ui::smart_menu::SmartActionType::SyncRepositories => {
+                contextual_action.label = format!("(y) {}", action.label.trim_start_matches("🔄 "));
+                contextual_actions.push(contextual_action);
+            }
+            crate::ui::smart_menu::SmartActionType::ConfigureApps(_) => {
+                // Show configure apps action without key shortcut since it's complex
+                contextual_actions.push(contextual_action);
+            }
+            // Skip CreateRepository and CloneAndOpen since they're now in core actions
+            crate::ui::smart_menu::SmartActionType::CreateRepository => {}
+            crate::ui::smart_menu::SmartActionType::CloneAndOpen(_) => {}
+            _ => {
+                contextual_actions.push(contextual_action);
+            }
+        }
+    }
+
+    contextual_actions
+}
+
+/// Show the Quick Launch sub-menu with numbered repository options
+async fn show_quick_launch_submenu(
+    workspace_manager: &mut WorkspaceManager,
+    quick_items: &[crate::ui::smart_menu::QuickLaunchItem],
+) -> Result<()> {
+    if quick_items.is_empty() {
+        println!("{} No recent repositories found", style("ℹ️").blue());
+        return Ok(());
+    }
+
+    // Build the sub-menu options
+    let mut submenu_options = Vec::new();
+
+    println!("{}", style("🚀 Quick Launch").cyan().bold());
+    println!();
+
+    for (index, item) in quick_items.iter().enumerate().take(9) {
+        let number = index + 1;
+        let app_display = item.last_app.as_deref().unwrap_or("default app");
+        let option_text = format!(
+            "{}. {} ({}) → {}",
+            number,
+            style(&item.repo_name).green().bold(),
+            style(&item.last_accessed).dim(),
+            style(app_display).blue()
+        );
+        submenu_options.push(option_text);
+    }
+
+    // Add navigation option
+    submenu_options.push(create_navigation_separator());
+    submenu_options.push(format_navigation_option("Back"));
+
+    let selection_result = Select::new("Select repository to launch:", submenu_options)
+        .with_starting_cursor(0)
+        .with_page_size(workspace_manager.get_main_menu_page_size())
+        .with_help_message("Quick shortcuts: 1-9(Select repo) ⋅ ESC(Back to main menu)")
+        .prompt();
+
+    let selection = match handle_prompt_result(selection_result)? {
+        Some(selection) => selection,
+        None => {
+            // ESC pressed - go back to main menu
+            return Ok(());
+        }
+    };
+
+    // Handle navigation
+    if let Some(action) = get_navigation_action(&selection) {
+        match action {
+            "Back" => return Ok(()),
+            _ => return Ok(()),
+        }
+    }
+
+    // Handle numbered selection
+    if let Some(first_char) = selection.chars().next() {
+        if let Some(digit) = first_char.to_digit(10) {
+            if (1..=9).contains(&digit) {
+                let index = (digit - 1) as usize;
+                if index < quick_items.len() {
+                    let item = &quick_items[index];
+                    launch_repository(workspace_manager, &item.repo_name, item.last_app.as_deref())
+                        .await?;
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // Handle direct text selection by parsing the number from the formatted string
+    for (index, item) in quick_items.iter().enumerate().take(9) {
+        let number = index + 1;
+        if selection.starts_with(&format!("{}.", number)) {
+            launch_repository(workspace_manager, &item.repo_name, item.last_app.as_deref()).await?;
+            return Ok(());
+        }
+    }
+
+    Ok(())
+}
+
+/// App-specific management menu
+async fn manage_specific_app_interactive(
+    workspace_manager: &mut WorkspaceManager,
+    app_name: &str,
+) -> Result<()> {
+    loop {
+        // Check if app is available on system
+        let is_available = workspace_manager.is_app_available(app_name).await;
+        let availability_status = if is_available {
+            "✅ Available"
+        } else {
+            "❌ Not installed"
+        };
+
+        // Count repositories configured with this app
+        let repos_with_app = workspace_manager
+            .get_config()
+            .repositories
+            .iter()
+            .filter(|repo| repo.apps.contains_key(app_name))
+            .count();
+
+        println!(
+            "\n{} {} Management",
+            console::style("📱").blue(),
+            console::style(app_name).cyan().bold()
+        );
+        println!("   Status: {}", availability_status);
+        println!("   Configured repositories: {}", repos_with_app);
+
+        let actions = vec![
+            "Configure this app for repositories".to_string(),
+            "Manage templates for this app".to_string(),
+            "View app status and details".to_string(),
+        ];
+
+        let menu_options = create_menu_with_navigation(actions, false);
+        let action_result = Select::new(&format!("🔧 {} Actions:", app_name), menu_options)
+            .with_page_size(workspace_manager.get_management_menus_page_size())
+            .with_help_message("Choose action • ESC to go back")
+            .prompt();
+
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        match action.as_str() {
+            "Configure this app for repositories" => {
+                configure_app_for_repositories_interactive(workspace_manager, app_name).await?;
+            }
+            "Manage templates for this app" => {
+                manage_app_templates_interactive(workspace_manager, app_name).await?;
+            }
+            "View app status and details" => {
+                show_app_status_interactive(workspace_manager, app_name).await?;
+            }
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
+        }
+
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Configure specific app for repositories
+async fn configure_app_for_repositories_interactive(
+    workspace_manager: &mut WorkspaceManager,
+    app_name: &str,
+) -> Result<()> {
+    let config = workspace_manager.get_config();
+    if config.repositories.is_empty() {
+        println!("❌ No repositories configured in workspace");
+        return Ok(());
+    }
+
+    // Select repository to configure
+    let repo_names: Vec<&str> = config
+        .repositories
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect();
+
+    let repo_name = Select::new(
+        &format!("Select repository to configure {} for:", app_name),
+        repo_names,
+    )
+    .prompt()?
+    .to_string();
+
+    // Get current app configuration state for this specific app
+    let current_state = workspace_manager.get_current_app_states(&repo_name)?;
+    let current_template = match app_name {
+        "warp" => current_state.warp.clone(),
+        "iterm2" => current_state.iterm2.clone(),
+        "vscode" => current_state.vscode.clone(),
+        "wezterm" => current_state.wezterm.clone(),
+        "cursor" => current_state.cursor.clone(),
+        "windsurf" => current_state.windsurf.clone(),
+        _ => None,
+    };
+
+    let is_currently_configured = current_template.is_some();
+
+    println!(
+        "\n{} {} configuration for '{}':",
+        console::style("📱").blue(),
+        console::style(app_name).cyan().bold(),
+        console::style(&repo_name).cyan().bold()
+    );
+
+    if let Some(template) = &current_template {
+        println!(
+            "  {} Currently configured with template: {}",
+            console::style("✓").green(),
+            console::style(template).yellow()
+        );
+    } else {
+        println!(
+            "  {} Not currently configured",
+            console::style("ℹ️").yellow()
+        );
+    }
+
+    // Ask if user wants to configure/reconfigure
+    let action = if is_currently_configured {
+        let choices = vec![
+            "Keep current configuration",
+            "Change template",
+            "Remove configuration",
+        ];
+        Select::new("What would you like to do?", choices).prompt()?
+    } else {
+        let choices = vec!["Configure with template", "Skip"];
+        Select::new("What would you like to do?", choices).prompt()?
+    };
+
+    match action {
+        "Configure with template" | "Change template" => {
+            let templates = workspace_manager.list_templates(app_name).await?;
+            let mut template_choices = if templates.is_empty() {
+                vec!["default".to_string()]
+            } else {
+                templates
+            };
+            template_choices.push("Create new template...".to_string());
+
+            let selected_template = Select::new(
+                &format!("Select template for {}:", app_name),
+                template_choices,
+            )
+            .prompt()?;
+
+            let final_template = if selected_template == "Create new template..." {
+                let template_name = Text::new("Template name:").prompt()?;
+                println!(
+                    "📝 Creating template '{}' from default template",
+                    template_name
+                );
+                let default_content = workspace_manager.get_default_template(app_name).await?;
+                workspace_manager
+                    .save_template(app_name, &template_name, &default_content)
+                    .await?;
+                println!("✅ Template created");
+                template_name
+            } else {
+                selected_template
+            };
+
+            // Apply single app configuration
+            let app_selection = crate::workspace::AppSelection {
+                app: app_name.to_string(),
+                selected: true,
+                template: Some(final_template.clone()),
+                currently_configured: is_currently_configured,
+            };
+
+            let changes = workspace_manager
+                .configure_multiple_apps(&repo_name, vec![app_selection])
+                .await?;
+
+            if !changes.is_empty() {
+                println!(
+                    "\n{} Configuration updated:",
+                    console::style("✅").green().bold()
+                );
+                for change in &changes {
+                    println!("  {}", change);
+                }
+            }
+        }
+        "Remove configuration" => {
+            let app_selection = crate::workspace::AppSelection {
+                app: app_name.to_string(),
+                selected: false,
+                template: None,
+                currently_configured: is_currently_configured,
+            };
+
+            let changes = workspace_manager
+                .configure_multiple_apps(&repo_name, vec![app_selection])
+                .await?;
+
+            if !changes.is_empty() {
+                println!(
+                    "\n{} Configuration removed:",
+                    console::style("✅").green().bold()
+                );
+                for change in &changes {
+                    println!("  {}", change);
+                }
+            }
+        }
+        _ => {
+            println!("No changes made");
+        }
+    }
+
+    Ok(())
+}
+
+/// Manage templates for specific app
+async fn manage_app_templates_interactive(
+    workspace_manager: &WorkspaceManager,
+    app_name: &str,
+) -> Result<()> {
+    loop {
+        let templates = workspace_manager.list_templates(app_name).await?;
+
+        println!(
+            "\n{} {} Templates",
+            console::style("📄").blue(),
+            console::style(app_name).cyan().bold()
+        );
+        println!("   Available templates: {}", templates.len());
+
+        let actions = vec![
+            "List templates".to_string(),
+            "Create template".to_string(),
+            "Delete template".to_string(),
+            "View template content".to_string(),
+        ];
+
+        let menu_options = create_menu_with_navigation(actions, false);
+        let action_result =
+            Select::new(&format!("📄 {} Template Actions:", app_name), menu_options)
+                .with_help_message("Choose template action • ESC to go back")
+                .prompt();
+
+        let action = match handle_prompt_result(action_result)? {
+            Some(action) => action,
+            None => {
+                // ESC pressed - go back
+                break;
+            }
+        };
+
+        // Handle navigation options first
+        if let Some(nav_action) = get_navigation_action(&action) {
+            match nav_action {
+                "Back" => break,
+                _ => continue,
+            }
+        }
+
+        match action.as_str() {
+            "List templates" => {
+                if templates.is_empty() {
+                    println!("📄 No templates found for {}", app_name);
+                } else {
+                    println!(
+                        "\n📄 Templates for {}:",
+                        console::style(app_name).cyan().bold()
+                    );
+                    for template in &templates {
+                        println!("  {} {}", console::style("•").dim(), template);
+                    }
+                }
+            }
+            "Create template" => {
+                let template_name = Text::new("Template name:").prompt()?;
+                println!(
+                    "📝 Creating template '{}' from default template",
+                    template_name
+                );
+                let default_content = workspace_manager.get_default_template(app_name).await?;
+                workspace_manager
+                    .save_template(app_name, &template_name, &default_content)
+                    .await?;
+                println!("✅ Template '{}' created", template_name);
+            }
+            "Delete template" => {
+                if templates.is_empty() {
+                    println!("📄 No templates found for {}", app_name);
+                    continue;
+                }
+
+                let deletable: Vec<String> =
+                    templates.into_iter().filter(|t| t != "default").collect();
+                if deletable.is_empty() {
+                    println!("📄 No deletable templates found (cannot delete 'default')");
+                    continue;
+                }
+
+                let template = Select::new("Select template to delete:", deletable).prompt()?;
+                let confirm = Confirm::new(&format!("Delete template '{}'?", template))
+                    .with_default(false)
+                    .prompt()?;
+
+                if confirm {
+                    workspace_manager
+                        .delete_template(app_name, &template)
+                        .await?;
+                    println!("✅ Deleted template '{}'", template);
+                }
+            }
+            "View template content" => {
+                if templates.is_empty() {
+                    println!("📄 No templates found for {}", app_name);
+                    continue;
+                }
+
+                let template = Select::new("Select template to view:", templates).prompt()?;
+                let content = workspace_manager
+                    .get_template_manager()
+                    .load_template(app_name, &template)
+                    .await?;
+
+                println!("\n📄 Template: {} / {}\n", app_name, template);
+                println!("{}", content);
+                println!();
+            }
+            _ => {
+                // Skip separators
+                if action.contains("──") || action == NAVIGATION_SEPARATOR {
+                    continue;
+                }
+            }
+        }
+
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Show app status and details
+async fn show_app_status_interactive(
+    workspace_manager: &WorkspaceManager,
+    app_name: &str,
+) -> Result<()> {
+    let is_available = workspace_manager.is_app_available(app_name).await;
+    let templates = workspace_manager.list_templates(app_name).await?;
+    let repos_with_app: Vec<_> = workspace_manager
+        .get_config()
+        .repositories
+        .iter()
+        .filter(|repo| repo.apps.contains_key(app_name))
+        .collect();
+
+    println!(
+        "\n{} {} Status Report",
+        console::style("📊").blue(),
+        console::style(app_name).cyan().bold()
+    );
+    println!(
+        "   Installation: {}",
+        if is_available {
+            "✅ Available"
+        } else {
+            "❌ Not installed"
+        }
+    );
+    println!("   Templates: {}", templates.len());
+    println!("   Configured repositories: {}", repos_with_app.len());
+
+    if !templates.is_empty() {
+        println!("\n📄 Templates:");
+        for template in &templates {
+            println!("  {} {}", console::style("•").dim(), template);
+        }
+    }
+
+    if !repos_with_app.is_empty() {
+        println!("\n📁 Configured repositories:");
+        for repo in &repos_with_app {
+            if let Some(template) = repo.get_app_template(app_name) {
+                println!(
+                    "  {} {} (template: {})",
+                    console::style("•").dim(),
+                    repo.name,
+                    template
+                );
+            } else if repo.is_app_enabled(app_name) {
+                println!("  {} {} (enabled)", console::style("•").dim(), repo.name);
+            }
+        }
+    }
+
+    println!("\nPress Enter to continue...");
+    let _ = Text::new("").prompt();
 
     Ok(())
 }
