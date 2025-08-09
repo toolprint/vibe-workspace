@@ -28,6 +28,7 @@ pub enum SmartActionType {
     SetupWorkspace,                    // First-time setup
     SyncRepositories,                  // Pull updates for all repos
     CleanupMissing,                    // Remove missing repos from config
+    BulkClone(String),                 // Bulk clone from user/org
 }
 
 /// Represents a quick launch item
@@ -207,6 +208,16 @@ impl SmartMenu {
             action_type: SmartActionType::CloneAndOpen("".to_string()),
             priority: 30,
         });
+
+        // Bulk clone suggestions for new/small workspaces
+        if self.workspace_state.total_repos < 10 {
+            actions.push(SmartAction {
+                label: "📦 Bulk clone repositories".to_string(),
+                description: "Clone all repos from a GitHub user or organization".to_string(),
+                action_type: SmartActionType::BulkClone("".to_string()),
+                priority: 75,
+            });
+        }
 
         // Sort by priority (highest first)
         actions.sort_by(|a, b| b.priority.cmp(&a.priority));

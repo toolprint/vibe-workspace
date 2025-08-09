@@ -112,6 +112,246 @@ impl GitHubCliProvider {
         Ok(output.status.success())
     }
 
+    /// Get all repositories for a specific user
+    pub async fn get_user_repositories(&self, username: &str) -> Result<Vec<Repository>> {
+        let output = Command::new(&self.gh_path)
+            .args([
+                "api",
+                &format!("users/{}/repos", username),
+                "--paginate",
+                "--jq",
+                r#".[] | {
+                    fullName: .full_name,
+                    name: .name,
+                    description: .description,
+                    url: .clone_url,
+                    sshUrl: .ssh_url,
+                    stargazersCount: .stargazers_count,
+                    language: .language,
+                    fork: .fork,
+                    archived: .archived,
+                    topics: .topics
+                }"#,
+            ])
+            .output()
+            .await
+            .context("Failed to get user repositories")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to get user repositories for '{}': {}", username, error_msg);
+        }
+
+        self.parse_repository_list(&output.stdout).await
+    }
+
+    /// Get all repositories for an organization
+    pub async fn get_organization_repositories(&self, org: &str) -> Result<Vec<Repository>> {
+        let output = Command::new(&self.gh_path)
+            .args([
+                "api",
+                &format!("orgs/{}/repos", org),
+                "--paginate",
+                "--jq",
+                r#".[] | {
+                    fullName: .full_name,
+                    name: .name,
+                    description: .description,
+                    url: .clone_url,
+                    sshUrl: .ssh_url,
+                    stargazersCount: .stargazers_count,
+                    language: .language,
+                    fork: .fork,
+                    archived: .archived,
+                    topics: .topics
+                }"#,
+            ])
+            .output()
+            .await
+            .context("Failed to get organization repositories")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to get organization repositories for '{}': {}", org, error_msg);
+        }
+
+        self.parse_repository_list(&output.stdout).await
+    }
+
+    /// Check if a target exists as either a user or organization
+    pub async fn user_or_org_exists(&self, target: &str) -> Result<bool> {
+        // Try user first
+        let user_check = Command::new(&self.gh_path)
+            .args(["api", &format!("users/{}", target)])
+            .output()
+            .await
+            .context("Failed to check user existence")?;
+
+        if user_check.status.success() {
+            return Ok(true);
+        }
+
+        // Try organization
+        let org_check = Command::new(&self.gh_path)
+            .args(["api", &format!("orgs/{}", target)])
+            .output()
+            .await
+            .context("Failed to check organization existence")?;
+
+        Ok(org_check.status.success())
+    }
+
+    /// Get the target type (user or organization)
+    pub async fn get_target_type(&self, target: &str) -> Result<crate::git::bulk_clone::TargetType> {
+        // Try organization first (more likely to have multiple repos)
+        let org_check = Command::new(&self.gh_path)
+            .args(["api", &format!("orgs/{}", target)])
+            .output()
+            .await
+            .context("Failed to check organization")?;
+
+        if org_check.status.success() {
+            return Ok(crate::git::bulk_clone::TargetType::Organization);
+        }
+
+        // Try user
+        let user_check = Command::new(&self.gh_path)
+            .args(["api", &format!("users/{}", target)])
+            .output()
+            .await
+            .context("Failed to check user")?;
+
+        if user_check.status.success() {
+            Ok(crate::git::bulk_clone::TargetType::User)
+        } else {
+            Ok(crate::git::bulk_clone::TargetType::Unknown)
+        }
+    }
+
+    /// Count repositories for a user or organization (quick check)
+    pub async fn count_repositories(&self, target: &str) -> Result<usize> {
+        // Try as organization first
+        match self.count_organization_repositories(target).await {
+            Ok(count) => Ok(count),
+            Err(_) => {
+                // Try as user
+                self.count_user_repositories(target).await
+            }
+        }
+    }
+
+    /// Count repositories for a user
+    async fn count_user_repositories(&self, username: &str) -> Result<usize> {
+        let output = Command::new(&self.gh_path)
+            .args([
+                "api",
+                &format!("users/{}/repos", username),
+                "--jq",
+                "length"
+            ])
+            .output()
+            .await
+            .context("Failed to count user repositories")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to count repositories for user '{}': {}", username, error_msg);
+        }
+
+        let count_str = String::from_utf8(output.stdout)
+            .context("Invalid UTF-8 in count response")?
+            .trim()
+            .to_string();
+
+        count_str.parse::<usize>()
+            .context("Failed to parse repository count")
+    }
+
+    /// Count repositories for an organization
+    async fn count_organization_repositories(&self, org: &str) -> Result<usize> {
+        let output = Command::new(&self.gh_path)
+            .args([
+                "api",
+                &format!("orgs/{}/repos", org),
+                "--jq",
+                "length"
+            ])
+            .output()
+            .await
+            .context("Failed to count organization repositories")?;
+
+        if !output.status.success() {
+            let error_msg = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to count repositories for org '{}': {}", org, error_msg);
+        }
+
+        let count_str = String::from_utf8(output.stdout)
+            .context("Invalid UTF-8 in count response")?
+            .trim()
+            .to_string();
+
+        count_str.parse::<usize>()
+            .context("Failed to parse repository count")
+    }
+
+    async fn parse_repository_list(&self, output: &[u8]) -> Result<Vec<Repository>> {
+        #[derive(Deserialize)]
+        struct RepoData {
+            #[serde(rename = "fullName")]
+            full_name: String,
+            name: String,
+            description: Option<String>,
+            url: String,
+            #[serde(rename = "sshUrl")]
+            ssh_url: String,
+            #[serde(rename = "stargazersCount")]
+            stars: u32,
+            language: Option<String>,
+            #[serde(default)]
+            fork: bool,
+            #[serde(default)]
+            archived: bool,
+            #[serde(default)]
+            topics: Vec<String>,
+        }
+
+        let output_str = String::from_utf8_lossy(output);
+        if output_str.trim().is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut repositories = Vec::new();
+        
+        // Parse line by line since GitHub CLI outputs one JSON object per line
+        for line in output_str.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let repo_data: RepoData = serde_json::from_str(line).with_context(|| {
+                format!("Failed to parse repository data: {}", line)
+            })?;
+
+            let repository = Repository {
+                id: repo_data.full_name.clone(),
+                name: repo_data.name,
+                full_name: repo_data.full_name,
+                description: repo_data.description,
+                url: repo_data.url,
+                ssh_url: repo_data.ssh_url,
+                stars: repo_data.stars,
+                language: repo_data.language,
+                license: None, // Not available in this endpoint
+                topics: repo_data.topics,
+            };
+
+            repositories.push(repository);
+        }
+
+        Ok(repositories)
+    }
+
     async fn parse_search_results(&self, output: &[u8]) -> Result<Vec<Repository>> {
         #[derive(Deserialize)]
         struct SearchResult {

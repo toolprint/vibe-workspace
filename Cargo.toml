@@ -1,6 +1,6 @@
 [package]
 name = "vibe-workspace"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2021"
 authors = ["Brian Cripe <brian@onegrep.dev>"]
 description = "Extremely lightweight CLI for managing multiple git repositories and workspace configurations"
@@ -57,8 +57,9 @@ urlencoding = "2.1"
 # URL parsing
 url = "2.5"
 
-# Regular expressions
+# Regular expressions and pattern matching
 regex = "1.10"
+glob = "0.3"
 
 # Interactive selection
 dialoguer = "0.11"

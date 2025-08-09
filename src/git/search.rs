@@ -67,6 +67,62 @@ impl SearchCommand {
         Self::execute_interactive(workspace_manager, config).await
     }
 
+    /// Execute search with a predefined query (used for fallback searches)
+    pub async fn execute_with_query(
+        query: &str,
+        workspace_manager: &mut WorkspaceManager,
+        config: &GitConfig,
+    ) -> Result<()> {
+        println!("\n{} Searching for repositories matching '{}'...", 
+            style("🔍").blue(), 
+            style(query).cyan().bold()
+        );
+
+        let search_query = SearchQuery {
+            keywords: query.split_whitespace().map(|s| s.to_string()).collect(),
+            tags: vec![],
+            language: None,
+            organization: None,
+            limit: Some(20),
+            sort: Default::default(),
+        };
+
+        let engine = SearchEngine::new(config)?;
+        let results = engine.search(&search_query).await?;
+
+        if results.is_empty() {
+            println!(
+                "{} No repositories found for '{}'",
+                style("❌").red(),
+                query
+            );
+            return Ok(());
+        }
+
+        println!(
+            "\n{} Found {} matching repositories:",
+            style("📦").green(),
+            style(results.len()).green().bold()
+        );
+
+        // Display and select repository
+        let selected_repo = Self::display_interactive_results(&results, workspace_manager)?;
+
+        if let Some(repo) = selected_repo {
+            // Use workflow system for seamless clone + configure + open experience
+            let workflow = CloneWorkflow {
+                url: repo.url.clone(),
+                app: None, // Let user choose during workflow
+            };
+
+            execute_workflow(Box::new(workflow), workspace_manager).await?;
+        } else {
+            println!("{} No repository selected", style("ℹ️").blue());
+        }
+
+        Ok(())
+    }
+
     pub async fn execute_interactive(
         workspace_manager: &mut WorkspaceManager,
         config: &GitConfig,

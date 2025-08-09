@@ -5,6 +5,8 @@ use inquire::{Confirm, Select};
 use std::path::PathBuf;
 
 use crate::git::{GitConfig, Repository};
+use crate::git::provider::github_cli::GitHubCliProvider;
+use crate::git::bulk_clone::{BulkCloneCommand, BulkCloneOptions};
 use crate::workspace::install::RepositoryInstaller;
 use crate::workspace::manager::WorkspaceManager;
 
@@ -234,6 +236,238 @@ impl CloneCommand {
             );
         }
 
+        Ok(())
+    }
+}
+
+/// Enhanced clone command with bulk detection capabilities
+pub struct EnhancedCloneCommand;
+
+impl EnhancedCloneCommand {
+    /// Execute clone with automatic detection of user/org patterns
+    pub async fn execute_with_detection(
+        url_or_target: String,
+        app: Option<String>,
+        no_configure: bool,
+        no_open: bool,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        let contains_slash = url_or_target.contains('/');
+        let is_url = url_or_target.starts_with("http") || url_or_target.starts_with("git@");
+        
+        // Route based on input pattern
+        match (contains_slash, is_url) {
+            // Traditional repository URL or owner/repo format
+            (true, _) | (false, true) => {
+                Self::single_repository_workflow(
+                    url_or_target,
+                    app,
+                    no_configure,
+                    no_open,
+                    workspace_manager,
+                    git_config,
+                ).await
+            }
+            
+            // Potential user/org name - check if it exists
+            (false, false) => {
+                Self::detect_and_route(
+                    url_or_target,
+                    app,
+                    no_configure,
+                    no_open,
+                    workspace_manager,
+                    git_config,
+                ).await
+            }
+        }
+    }
+    
+    /// Detect if target is user/org and route accordingly
+    async fn detect_and_route(
+        target: String,
+        app: Option<String>,
+        no_configure: bool,
+        no_open: bool,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        println!("🔍 Analyzing '{}'...", style(&target).cyan());
+        
+        // Initialize GitHub CLI provider
+        let github_cli = match GitHubCliProvider::new() {
+            Ok(cli) => cli,
+            Err(_) => {
+                println!("{} GitHub CLI not available, searching repositories...", 
+                    style("⚠️").yellow());
+                return Self::fallback_to_search(target, workspace_manager, git_config).await;
+            }
+        };
+        
+        // Check if target exists as user or organization
+        match github_cli.user_or_org_exists(&target).await {
+            Ok(true) => {
+                // Get repository count
+                match github_cli.count_repositories(&target).await {
+                    Ok(0) => {
+                        println!("{} '{}' has no public repositories.", 
+                            style("ℹ️").blue(), 
+                            style(&target).cyan()
+                        );
+                        Self::fallback_to_search(target, workspace_manager, git_config).await
+                    }
+                    Ok(count) => {
+                        Self::interactive_clone_selection(
+                            target,
+                            count,
+                            app,
+                            no_configure,
+                            no_open,
+                            workspace_manager,
+                            git_config,
+                        ).await
+                    }
+                    Err(_) => {
+                        println!("{} Failed to count repositories for '{}', searching instead...", 
+                            style("⚠️").yellow(),
+                            style(&target).cyan()
+                        );
+                        Self::fallback_to_search(target, workspace_manager, git_config).await
+                    }
+                }
+            }
+            Ok(false) => {
+                println!("🔍 '{}' not found as a GitHub user or organization.", &target);
+                println!("🔍 Searching repositories for '{}'...", &target);
+                Self::fallback_to_search(target, workspace_manager, git_config).await
+            }
+            Err(_) => {
+                println!("{} Failed to check GitHub, searching repositories instead...", 
+                    style("⚠️").yellow()
+                );
+                Self::fallback_to_search(target, workspace_manager, git_config).await
+            }
+        }
+    }
+    
+    /// Show interactive options for user/org with repositories
+    async fn interactive_clone_selection(
+        target: String,
+        repo_count: usize,
+        _app: Option<String>,
+        _no_configure: bool,
+        _no_open: bool,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        println!("✅ Found GitHub target '{}' with {} repositories", 
+            style(&target).cyan().bold(),
+            style(repo_count).green().bold()
+        );
+        
+        let options = vec![
+            format!("Clone all {} repositories", repo_count),
+            "Search for specific repository".to_string(),
+            "Cancel".to_string(),
+        ];
+        
+        let selection = Select::new("What would you like to do?", options)
+            .with_help_message("Choose how to proceed with this GitHub target")
+            .prompt()?;
+        
+        match selection.as_str() {
+            s if s.starts_with("Clone all") => {
+                Self::bulk_clone_workflow(
+                    target,
+                    workspace_manager,
+                    git_config,
+                ).await
+            }
+            "Search for specific repository" => {
+                Self::fallback_to_search(target, workspace_manager, git_config).await
+            }
+            _ => {
+                println!("{} Operation cancelled", style("ℹ️").blue());
+                Ok(())
+            }
+        }
+    }
+    
+    /// Execute bulk cloning workflow
+    async fn bulk_clone_workflow(
+        target: String,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        let options = BulkCloneOptions {
+            exclude_patterns: Vec::new(),
+            include_patterns: Vec::new(),
+            skip_existing: true,
+            custom_path: None,
+            force: false, // Always show confirmation in interactive mode
+        };
+        
+        match BulkCloneCommand::execute(target, options, workspace_manager, git_config).await {
+            Ok(result) => {
+                println!(
+                    "{} Bulk clone completed: {} successful, {} failed",
+                    style("✅").green().bold(),
+                    result.total_cloned,
+                    result.failed.len()
+                );
+                Ok(())
+            }
+            Err(e) => {
+                println!("{} Bulk clone failed: {}", style("❌").red(), e);
+                Err(e)
+            }
+        }
+    }
+    
+    /// Fallback to repository search when user/org detection fails
+    async fn fallback_to_search(
+        target: String,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        use crate::git::SearchCommand;
+        
+        // Use the existing search functionality
+        SearchCommand::execute_with_query(&target, workspace_manager, git_config).await
+    }
+    
+    /// Execute single repository clone workflow
+    async fn single_repository_workflow(
+        url: String,
+        app: Option<String>,
+        no_configure: bool,
+        no_open: bool,
+        workspace_manager: &mut WorkspaceManager,
+        git_config: &GitConfig,
+    ) -> Result<()> {
+        use crate::ui::workflows::{execute_workflow, CloneWorkflow};
+        
+        // Use existing workflow system if not skipping steps
+        if !no_configure || !no_open {
+            let workflow = Box::new(CloneWorkflow {
+                url: url.clone(),
+                app: app.clone(),
+            });
+            
+            execute_workflow(workflow, workspace_manager).await?;
+        } else {
+            // Just clone without workflow
+            let _cloned_path = CloneCommand::execute(
+                url,
+                None,
+                false,
+                false,
+                workspace_manager,
+                git_config,
+            ).await?;
+        }
+        
         Ok(())
     }
 }

@@ -114,7 +114,7 @@ enum Commands {
 
     /// Clone, configure, and open a repository in one command
     Clone {
-        /// Repository URL or GitHub shorthand (owner/repo)
+        /// Repository URL, GitHub shorthand (owner/repo), or user/org name for bulk cloning
         url: String,
 
         /// App to open with after cloning
@@ -128,6 +128,22 @@ enum Commands {
         /// Skip opening after clone
         #[arg(long)]
         no_open: bool,
+
+        /// Clone all repositories for user/org (bulk mode)
+        #[arg(long)]
+        all: bool,
+
+        /// Exclude patterns for bulk cloning (comma-separated glob patterns)
+        #[arg(long, requires = "all")]
+        exclude: Option<String>,
+
+        /// Include only patterns for bulk cloning (comma-separated glob patterns)
+        #[arg(long, requires = "all")]
+        include: Option<String>,
+
+        /// Skip confirmation prompts for bulk operations
+        #[arg(long, requires = "all")]
+        force: bool,
     },
 
     /// Run first-time setup wizard
@@ -908,34 +924,70 @@ async fn main() -> Result<()> {
                 app,
                 no_configure,
                 no_open,
+                all,
+                exclude,
+                include,
+                force,
             } => {
-                use ui::workflows::{execute_workflow, CloneWorkflow};
+                let git_config = git::GitConfig::default();
 
-                // Use workflow system if not skipping steps
-                if !no_configure || !no_open {
-                    let workflow = Box::new(CloneWorkflow {
-                        url: url.clone(),
-                        app: app.clone(),
-                    });
+                // Handle bulk cloning mode
+                if all {
+                    use git::bulk_clone::{BulkCloneCommand, BulkCloneOptions};
 
-                    execute_workflow(workflow, &mut workspace_manager).await?;
+                    let exclude_patterns = exclude
+                        .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
+                        .unwrap_or_default();
+                    
+                    let include_patterns = include
+                        .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
+                        .unwrap_or_default();
+
+                    let options = BulkCloneOptions {
+                        exclude_patterns,
+                        include_patterns,
+                        skip_existing: true,
+                        custom_path: None,
+                        force,
+                    };
+
+                    match BulkCloneCommand::execute(url, options, &mut workspace_manager, &git_config).await {
+                        Ok(result) => {
+                            display_println!(
+                                "{} Bulk clone completed: {} successful, {} failed",
+                                style("✅").green().bold(),
+                                result.total_cloned,
+                                result.failed.len()
+                            );
+                        }
+                        Err(e) => {
+                            display_println!("{} Bulk clone failed: {}", style("❌").red(), e);
+                            std::process::exit(1);
+                        }
+                    }
                 } else {
-                    // Just clone without workflow
-                    let git_config = git::GitConfig::default();
-                    let _cloned_path = git::CloneCommand::execute(
+                    // Handle single repository cloning with enhanced detection
+                    use git::clone::EnhancedCloneCommand;
+
+                    match EnhancedCloneCommand::execute_with_detection(
                         url,
-                        None,
-                        false,
-                        false,
+                        app,
+                        no_configure,
+                        no_open,
                         &mut workspace_manager,
                         &git_config,
-                    )
-                    .await?;
-
-                    display_println!(
-                        "{} Repository cloned successfully!",
-                        style("✓").green().bold()
-                    );
+                    ).await {
+                        Ok(_) => {
+                            display_println!(
+                                "{} Repository operation completed successfully!",
+                                style("✓").green().bold()
+                            );
+                        }
+                        Err(e) => {
+                            display_println!("{} Clone operation failed: {}", style("❌").red(), e);
+                            std::process::exit(1);
+                        }
+                    }
                 }
             }
 

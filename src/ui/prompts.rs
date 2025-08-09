@@ -310,6 +310,41 @@ async fn search_and_clone_interactive(workspace_manager: &mut WorkspaceManager) 
     Ok(())
 }
 
+/// Bulk clone repositories interactively
+async fn bulk_clone_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
+    use crate::git::clone::EnhancedCloneCommand;
+    use inquire::Text;
+    
+    println!("\n{} {} {}",
+        style("📦").blue(),
+        style("Bulk Clone Repositories").cyan().bold(),
+        style("- Clone all repositories from a GitHub user or organization").dim()
+    );
+    
+    let target = Text::new("Enter GitHub user or organization name:")
+        .with_placeholder("e.g., microsoft, google, toolprint")
+        .prompt()?;
+    
+    if target.trim().is_empty() {
+        println!("{} Bulk clone cancelled", style("❌").red());
+        return Ok(());
+    }
+    
+    let git_config = GitConfig::default();
+    
+    // Use the enhanced clone command to detect and route
+    EnhancedCloneCommand::execute_with_detection(
+        target,
+        None,
+        true,  // no_configure - bulk mode skips app config
+        true,  // no_open - bulk mode doesn't open repos
+        workspace_manager,
+        &git_config,
+    ).await?;
+    
+    Ok(())
+}
+
 async fn show_status_interactive(workspace_manager: &WorkspaceManager) -> Result<()> {
     let options = vec![
         "All repositories".to_string(),
@@ -1519,6 +1554,9 @@ async fn handle_smart_action(
         }
         SmartActionType::QuickConfigureBatch(repo_names) => {
             configure_apps_for_repos(workspace_manager, repo_names).await?;
+        }
+        SmartActionType::BulkClone(_) => {
+            bulk_clone_interactive(workspace_manager).await?;
         }
     }
     Ok(())

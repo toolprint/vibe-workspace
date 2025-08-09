@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod bulk_clone;
 pub mod clone;
 pub mod provider;
 pub mod search;
