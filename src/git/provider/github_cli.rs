@@ -139,7 +139,11 @@ impl GitHubCliProvider {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to get user repositories for '{}': {}", username, error_msg);
+            anyhow::bail!(
+                "Failed to get user repositories for '{}': {}",
+                username,
+                error_msg
+            );
         }
 
         self.parse_repository_list(&output.stdout).await
@@ -172,7 +176,11 @@ impl GitHubCliProvider {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to get organization repositories for '{}': {}", org, error_msg);
+            anyhow::bail!(
+                "Failed to get organization repositories for '{}': {}",
+                org,
+                error_msg
+            );
         }
 
         self.parse_repository_list(&output.stdout).await
@@ -202,7 +210,10 @@ impl GitHubCliProvider {
     }
 
     /// Get the target type (user or organization)
-    pub async fn get_target_type(&self, target: &str) -> Result<crate::git::bulk_clone::TargetType> {
+    pub async fn get_target_type(
+        &self,
+        target: &str,
+    ) -> Result<crate::git::bulk_clone::TargetType> {
         // Try organization first (more likely to have multiple repos)
         let org_check = Command::new(&self.gh_path)
             .args(["api", &format!("orgs/{}", target)])
@@ -247,7 +258,7 @@ impl GitHubCliProvider {
                 "api",
                 &format!("users/{}/repos", username),
                 "--jq",
-                "length"
+                "length",
             ])
             .output()
             .await
@@ -255,7 +266,11 @@ impl GitHubCliProvider {
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to count repositories for user '{}': {}", username, error_msg);
+            anyhow::bail!(
+                "Failed to count repositories for user '{}': {}",
+                username,
+                error_msg
+            );
         }
 
         let count_str = String::from_utf8(output.stdout)
@@ -263,26 +278,26 @@ impl GitHubCliProvider {
             .trim()
             .to_string();
 
-        count_str.parse::<usize>()
+        count_str
+            .parse::<usize>()
             .context("Failed to parse repository count")
     }
 
     /// Count repositories for an organization
     async fn count_organization_repositories(&self, org: &str) -> Result<usize> {
         let output = Command::new(&self.gh_path)
-            .args([
-                "api",
-                &format!("orgs/{}/repos", org),
-                "--jq",
-                "length"
-            ])
+            .args(["api", &format!("orgs/{}/repos", org), "--jq", "length"])
             .output()
             .await
             .context("Failed to count organization repositories")?;
 
         if !output.status.success() {
             let error_msg = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to count repositories for org '{}': {}", org, error_msg);
+            anyhow::bail!(
+                "Failed to count repositories for org '{}': {}",
+                org,
+                error_msg
+            );
         }
 
         let count_str = String::from_utf8(output.stdout)
@@ -290,7 +305,8 @@ impl GitHubCliProvider {
             .trim()
             .to_string();
 
-        count_str.parse::<usize>()
+        count_str
+            .parse::<usize>()
             .context("Failed to parse repository count")
     }
 
@@ -321,7 +337,7 @@ impl GitHubCliProvider {
         }
 
         let mut repositories = Vec::new();
-        
+
         // Parse line by line since GitHub CLI outputs one JSON object per line
         for line in output_str.lines() {
             let line = line.trim();
@@ -329,9 +345,8 @@ impl GitHubCliProvider {
                 continue;
             }
 
-            let repo_data: RepoData = serde_json::from_str(line).with_context(|| {
-                format!("Failed to parse repository data: {}", line)
-            })?;
+            let repo_data: RepoData = serde_json::from_str(line)
+                .with_context(|| format!("Failed to parse repository data: {}", line))?;
 
             let repository = Repository {
                 id: repo_data.full_name.clone(),

@@ -73,8 +73,9 @@ impl SearchCommand {
         workspace_manager: &mut WorkspaceManager,
         config: &GitConfig,
     ) -> Result<()> {
-        println!("\n{} Searching for repositories matching '{}'...", 
-            style("🔍").blue(), 
+        println!(
+            "\n{} Searching for repositories matching '{}'...",
+            style("🔍").blue(),
             style(query).cyan().bold()
         );
 

@@ -938,7 +938,7 @@ async fn main() -> Result<()> {
                     let exclude_patterns = exclude
                         .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
                         .unwrap_or_default();
-                    
+
                     let include_patterns = include
                         .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
                         .unwrap_or_default();
@@ -951,7 +951,14 @@ async fn main() -> Result<()> {
                         force,
                     };
 
-                    match BulkCloneCommand::execute(url, options, &mut workspace_manager, &git_config).await {
+                    match BulkCloneCommand::execute(
+                        url,
+                        options,
+                        &mut workspace_manager,
+                        &git_config,
+                    )
+                    .await
+                    {
                         Ok(result) => {
                             display_println!(
                                 "{} Bulk clone completed: {} successful, {} failed",
@@ -976,7 +983,9 @@ async fn main() -> Result<()> {
                         no_open,
                         &mut workspace_manager,
                         &git_config,
-                    ).await {
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             display_println!(
                                 "{} Repository operation completed successfully!",

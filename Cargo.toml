@@ -1,6 +1,6 @@
 [package]
 name = "vibe-workspace"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2021"
 authors = ["Brian Cripe <brian@onegrep.dev>"]
 description = "Extremely lightweight CLI for managing multiple git repositories and workspace configurations"

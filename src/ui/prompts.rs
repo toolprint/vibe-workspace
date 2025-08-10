@@ -314,34 +314,36 @@ async fn search_and_clone_interactive(workspace_manager: &mut WorkspaceManager) 
 async fn bulk_clone_interactive(workspace_manager: &mut WorkspaceManager) -> Result<()> {
     use crate::git::clone::EnhancedCloneCommand;
     use inquire::Text;
-    
-    println!("\n{} {} {}",
+
+    println!(
+        "\n{} {} {}",
         style("📦").blue(),
         style("Bulk Clone Repositories").cyan().bold(),
         style("- Clone all repositories from a GitHub user or organization").dim()
     );
-    
+
     let target = Text::new("Enter GitHub user or organization name:")
         .with_placeholder("e.g., microsoft, google, toolprint")
         .prompt()?;
-    
+
     if target.trim().is_empty() {
         println!("{} Bulk clone cancelled", style("❌").red());
         return Ok(());
     }
-    
+
     let git_config = GitConfig::default();
-    
+
     // Use the enhanced clone command to detect and route
     EnhancedCloneCommand::execute_with_detection(
         target,
         None,
-        true,  // no_configure - bulk mode skips app config
-        true,  // no_open - bulk mode doesn't open repos
+        true, // no_configure - bulk mode skips app config
+        true, // no_open - bulk mode doesn't open repos
         workspace_manager,
         &git_config,
-    ).await?;
-    
+    )
+    .await?;
+
     Ok(())
 }
 
