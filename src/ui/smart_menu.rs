@@ -139,34 +139,72 @@ impl SmartMenu {
             });
         }
 
-        // Configure apps for unconfigured repos
-        if !self.workspace_state.unconfigured_repos.is_empty() {
-            let count = self.workspace_state.unconfigured_repos.len();
+        // Create new repository action (always available) - HIGH PRIORITY
+        actions.push(SmartAction {
+            label: "🆕 Create new repository".to_string(),
+            description: "Create a new local repository for prototyping".to_string(),
+            action_type: SmartActionType::CreateRepository,
+            priority: 85,
+        });
+
+        // Clone new repo action (always available) - HIGH PRIORITY
+        actions.push(SmartAction {
+            label: "📥 Clone new repository".to_string(),
+            description: "Search and clone from GitHub".to_string(),
+            action_type: SmartActionType::CloneAndOpen("".to_string()),
+            priority: 80,
+        });
+
+        // Open any repository action (if repos exist) - HIGH PRIORITY
+        if self.workspace_state.total_repos > 0 {
             actions.push(SmartAction {
-                label: format!(
-                    "⚙️  Configure apps for {} repo{}",
-                    count,
-                    if count == 1 { "" } else { "s" }
-                ),
-                description: "Set up app integrations for repositories".to_string(),
-                action_type: SmartActionType::ConfigureApps(
-                    self.workspace_state.unconfigured_repos.clone(),
-                ),
-                priority: 80,
+                label: "📂 Open repository".to_string(),
+                description: "Browse and open any repository in your workspace".to_string(),
+                action_type: SmartActionType::OpenRecent("".to_string()),
+                priority: 90,
             });
         }
 
-        // Install apps if none available
+        // Sync repositories if it's been a while - MEDIUM PRIORITY
+        if let Some(days) = self.workspace_state.days_since_last_sync {
+            if days > 7 {
+                actions.push(SmartAction {
+                    label: "🔄 Sync all repositories".to_string(),
+                    description: format!("Last synced {days} days ago"),
+                    action_type: SmartActionType::SyncRepositories,
+                    priority: 70,
+                });
+            }
+        }
+
+        // Install apps if none available - LOWER PRIORITY (optional)
         if self.workspace_state.available_apps.is_empty() && self.workspace_state.total_repos > 0 {
             actions.push(SmartAction {
                 label: "📱 Install development apps".to_string(),
                 description: "Install VS Code, Warp, or other supported apps".to_string(),
                 action_type: SmartActionType::InstallApps,
-                priority: 70,
+                priority: 60,
             });
         }
 
-        // Clean up missing repos
+        // Configure apps for unconfigured repos - LOWER PRIORITY (optional)
+        if !self.workspace_state.unconfigured_repos.is_empty() {
+            let count = self.workspace_state.unconfigured_repos.len();
+            actions.push(SmartAction {
+                label: format!(
+                    "⚙️  Set up templates for {} repo{}",
+                    count,
+                    if count == 1 { "" } else { "s" }
+                ),
+                description: "Configure advanced templates and automation (optional)".to_string(),
+                action_type: SmartActionType::ConfigureApps(
+                    self.workspace_state.unconfigured_repos.clone(),
+                ),
+                priority: 50,
+            });
+        }
+
+        // Clean up missing repos - LOWER PRIORITY (maintenance)
         if !self.workspace_state.missing_repos.is_empty() {
             let count = self.workspace_state.missing_repos.len();
             actions.push(SmartAction {
@@ -177,39 +215,11 @@ impl SmartMenu {
                 ),
                 description: "Remove deleted repositories from configuration".to_string(),
                 action_type: SmartActionType::CleanupMissing,
-                priority: 60,
+                priority: 40,
             });
         }
 
-        // Sync repositories if it's been a while
-        if let Some(days) = self.workspace_state.days_since_last_sync {
-            if days > 7 {
-                actions.push(SmartAction {
-                    label: "🔄 Sync all repositories".to_string(),
-                    description: format!("Last synced {days} days ago"),
-                    action_type: SmartActionType::SyncRepositories,
-                    priority: 50,
-                });
-            }
-        }
-
-        // Create new repository action (always available)
-        actions.push(SmartAction {
-            label: "🆕 Create new repository".to_string(),
-            description: "Create a new local repository for prototyping".to_string(),
-            action_type: SmartActionType::CreateRepository,
-            priority: 35,
-        });
-
-        // Clone new repo action (always available)
-        actions.push(SmartAction {
-            label: "📥 Clone new repository".to_string(),
-            description: "Search and clone from GitHub".to_string(),
-            action_type: SmartActionType::CloneAndOpen("".to_string()),
-            priority: 30,
-        });
-
-        // Bulk clone suggestions for new/small workspaces
+        // Bulk clone suggestions for new/small workspaces - MEDIUM-HIGH PRIORITY (usage)
         if self.workspace_state.total_repos < 10 {
             actions.push(SmartAction {
                 label: "📦 Bulk clone repositories".to_string(),

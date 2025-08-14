@@ -70,11 +70,12 @@ impl Workflow for CloneWorkflow {
                 style(&repo_name).cyan()
             );
 
-            // Continue to app configuration
+            // Continue to app configuration (optional)
             Ok(NextAction::Continue(Box::new(ConfigureAppWorkflow {
                 repo_name,
                 suggested_app: self.app.clone(),
                 open_after: true,
+                force_configure: false, // Allow skipping configuration
             })))
         })
     }
@@ -89,6 +90,7 @@ pub struct ConfigureAppWorkflow {
     pub repo_name: String,
     pub suggested_app: Option<String>,
     pub open_after: bool,
+    pub force_configure: bool, // If false, can skip to smart opening
 }
 
 impl Workflow for ConfigureAppWorkflow {
@@ -118,7 +120,25 @@ impl Workflow for ConfigureAppWorkflow {
                 }
             }
 
-            // Prompt to configure app
+            // If not forced to configure, try smart opening without configuration
+            if !self.force_configure {
+                if self.open_after {
+                    // Use smart opening which works for any repository
+                    display_println!(
+                        "\n{} Opening '{}' with smart app selection...",
+                        style("🚀").blue(),
+                        style(&self.repo_name).cyan()
+                    );
+
+                    return Ok(NextAction::Continue(Box::new(SmartOpenWorkflow {
+                        repo_name: self.repo_name.clone(),
+                    })));
+                } else {
+                    return Ok(NextAction::Complete);
+                }
+            }
+
+            // Prompt to configure app (forced configuration path)
             display_println!(
                 "\n{} Configure app for '{}'?",
                 style("🔧").blue(),
@@ -168,6 +188,35 @@ impl Workflow for ConfigureAppWorkflow {
 
     fn description(&self) -> String {
         format!("Configure app for {}", self.repo_name)
+    }
+}
+
+/// Smart open repository workflow - uses smart_open_repository method
+pub struct SmartOpenWorkflow {
+    pub repo_name: String,
+}
+
+impl Workflow for SmartOpenWorkflow {
+    fn execute<'a>(
+        &'a self,
+        manager: &'a mut WorkspaceManager,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<NextAction>> + Send + 'a>> {
+        Box::pin(async move {
+            // Use smart_open_repository which handles both configured and unconfigured repos
+            manager.smart_open_repository(&self.repo_name).await?;
+
+            display_println!(
+                "{} Repository '{}' opened successfully",
+                style("🚀").green().bold(),
+                style(&self.repo_name).cyan()
+            );
+
+            Ok(NextAction::Complete)
+        })
+    }
+
+    fn description(&self) -> String {
+        format!("Smart open {}", self.repo_name)
     }
 }
 
@@ -450,6 +499,7 @@ impl Workflow for CreateRepositoryWorkflow {
                             repo_name: repo_name.clone(),
                             suggested_app: self.app.clone(),
                             open_after: !self.skip_open,
+                            force_configure: false, // Allow skipping configuration
                         })))
                     }
                 }
@@ -516,6 +566,7 @@ impl CreateRepositoryWorkflow {
                         repo_name: repo_name.clone(),
                         suggested_app: self.app.clone(),
                         open_after: !self.skip_open,
+                        force_configure: false, // Allow skipping configuration
                     })))
                 }
             }
