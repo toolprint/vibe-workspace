@@ -1,6 +1,5 @@
 use anyhow::Result;
 use console::style;
-use fuzzy_matcher::skim::SkimMatcherV2;
 use inquire::{InquireError, Select};
 use std::collections::HashMap;
 
@@ -9,24 +8,32 @@ use crate::ui::formatting;
 use crate::ui::state::VibeState;
 use crate::workspace::{operations::GitStatus, WorkspaceManager};
 
-/// Enhanced repository launcher with fuzzy search and caching
+/// Enhanced repository launcher with caching
 pub struct QuickLauncher {
     repo_cache: RepositoryCache,
     git_cache: GitStatusCache,
-    matcher: SkimMatcherV2,
 }
 
-/// Repository display item for the launcher
+/// Enhanced launch item that supports both configured and unconfigured repositories
 #[derive(Debug, Clone)]
-pub struct LaunchItem {
+pub struct UniversalLaunchItem {
     pub name: String,
     pub display_string: String,
-    pub apps: Vec<String>,
+    #[allow(dead_code)]
+    pub has_configured_apps: bool,
+    #[allow(dead_code)]
+    pub configured_apps: Vec<String>,
+    #[allow(dead_code)]
+    pub available_apps: Vec<String>,
+    #[allow(dead_code)]
     pub git_status: Option<GitStatus>,
+    #[allow(dead_code)]
     pub is_recent: bool,
-    pub recent_rank: Option<usize>,    // 1-9 for recent repos
-    pub last_accessed: Option<String>, // Human-readable time for recent repos
-    pub last_app: Option<String>,      // Last used app for recent repos
+    #[allow(dead_code)]
+    pub recent_rank: Option<usize>,
+    #[allow(dead_code)]
+    pub last_accessed: Option<String>,
+    pub last_app: Option<String>,
 }
 
 impl QuickLauncher {
@@ -42,28 +49,19 @@ impl QuickLauncher {
         Ok(Self {
             repo_cache,
             git_cache,
-            matcher: SkimMatcherV2::default(),
         })
     }
 
-    /// Launch the repository selection UI with fast cached data
+    /// Universal launch - shows ALL repositories (configured and unconfigured)
     pub async fn launch(&self, workspace_manager: &mut WorkspaceManager) -> Result<()> {
-        // Load cached repository data (fast)
-        let mut cached_repos = self.repo_cache.get_repositories_with_apps().await?;
+        // Get ALL repositories from workspace manager
+        let all_repos = workspace_manager.list_repositories();
 
-        if cached_repos.is_empty() {
-            println!("❌ No repositories with configured apps found in cache");
-            println!("💡 Refreshing cache from workspace configuration...");
-
-            // Fallback: refresh cache from current config
-            self.refresh_cache(workspace_manager).await?;
-            cached_repos = self.repo_cache.get_repositories_with_apps().await?;
-
-            if cached_repos.is_empty() {
-                println!("❌ No repositories with configured apps found");
-                println!("💡 Configure apps for repositories first using 'Configure vibes'");
-                return Ok(());
-            }
+        if all_repos.is_empty() {
+            println!("❌ No repositories found in workspace");
+            println!("💡 Scan for repositories: 'vibe git scan'");
+            println!("💡 Clone a repository: 'vibe clone <url>'");
+            return Ok(());
         }
 
         // Get recent repositories for prioritization
@@ -95,9 +93,12 @@ impl QuickLauncher {
             .map(|cached| (cached.repository_name.clone(), cached.into()))
             .collect();
 
-        // Create launch items with all available information
-        let launch_items: Vec<LaunchItem> = cached_repos
-            .into_iter()
+        // Get available apps on system for unconfigured repos
+        let available_apps = workspace_manager.get_available_apps().await;
+
+        // Create universal launch items with ALL repositories
+        let launch_items: Vec<UniversalLaunchItem> = all_repos
+            .iter()
             .map(|repo| {
                 let git_status = git_status_map.get(&repo.name).cloned();
                 let recent_rank = recent_names.get(&repo.name).cloned();
@@ -111,17 +112,23 @@ impl QuickLauncher {
                         (None, None)
                     };
 
-                // Create display string using flat formatting (no recent indicators)
-                let display_string = formatting::format_repository_flat_item(
-                    &repo.name,
-                    &repo.configured_apps,
-                    git_status.as_ref(),
-                );
+                // Check if repository has configured apps
+                let configured_apps: Vec<String> = repo.apps.keys().cloned().collect();
+                let has_configured_apps = !configured_apps.is_empty();
 
-                LaunchItem {
-                    name: repo.name,
+                // Create clean display with consistent folder icons
+                let display_string = if has_configured_apps {
+                    format!("📁 {} 📋[{}]", repo.name, configured_apps.len())
+                } else {
+                    format!("📁 {}", repo.name)
+                };
+
+                UniversalLaunchItem {
+                    name: repo.name.clone(),
                     display_string,
-                    apps: repo.configured_apps,
+                    has_configured_apps,
+                    configured_apps,
+                    available_apps: available_apps.clone(),
                     git_status,
                     is_recent,
                     recent_rank,
@@ -131,37 +138,26 @@ impl QuickLauncher {
             })
             .collect();
 
-        // Separate recent and other repositories
-        let (recent_items, other_items): (Vec<_>, Vec<_>) = launch_items
-            .into_iter()
-            .partition(|item| item.recent_rank.is_some());
-
-        // Sort recent items by rank, other items alphabetically
-        let mut recent_items = recent_items;
-        recent_items.sort_by(|a, b| a.recent_rank.cmp(&b.recent_rank));
-
-        let mut other_items = other_items;
-        other_items.sort_by(|a, b| a.name.cmp(&b.name));
+        // Sort all repositories alphabetically for clean browsing
+        let mut sorted_items = launch_items;
+        sorted_items.sort_by(|a, b| a.name.cmp(&b.name));
 
         // Create display options for all repositories
         let mut display_options = Vec::new();
         let mut item_map = std::collections::HashMap::new();
 
-        // Add all repositories in a single flat list (recent first, then others)
-        for item in &recent_items {
-            display_options.push(item.display_string.clone());
-            item_map.insert(item.display_string.clone(), item);
-        }
-        for item in &other_items {
+        // Add all repositories in alphabetical order
+        for item in &sorted_items {
             display_options.push(item.display_string.clone());
             item_map.insert(item.display_string.clone(), item);
         }
 
-        // Show selection UI
-        println!("\n🚀 Select a repository to open:");
+        // Show selection UI with updated messaging
+        println!("\n📂 Select a repository to open:");
         println!(
-            "   {} repositories available",
-            recent_items.len() + other_items.len()
+            "   {} repositories available • {} apps auto-detected for unconfigured repos",
+            sorted_items.len(),
+            available_apps.len()
         );
 
         // Repository selection
@@ -187,69 +183,78 @@ impl QuickLauncher {
         })?;
 
         // Handle app selection and launch
-        self.launch_repository(workspace_manager, selected_item)
+        self.launch_universal_repository(workspace_manager, selected_item)
             .await?;
 
         Ok(())
     }
 
-    /// Launch a specific repository with app selection
-    async fn launch_repository(
+    /// Launch a universal repository (configured or unconfigured) with smart app selection
+    async fn launch_universal_repository(
         &self,
         workspace_manager: &mut WorkspaceManager,
-        item: &LaunchItem,
+        item: &UniversalLaunchItem,
     ) -> Result<()> {
-        let app_to_use = if item.apps.len() == 1 {
-            // Only one app configured, use it directly
-            item.apps[0].clone()
-        } else {
-            // Multiple apps, let user choose
-            println!(
-                "\n📱 Multiple apps configured for '{}'. Select one:",
-                style(&item.name).cyan()
-            );
+        // Use smart_open_repository for manual selection - this shows choice menu
+        workspace_manager.smart_open_repository(&item.name).await?;
 
-            let app_options: Vec<String> = item.apps.to_vec();
-
-            let selected_app_result = Select::new("App:", app_options)
-                .with_help_message("Select the app to open this repository with • ESC to cancel")
-                .with_page_size(workspace_manager.get_app_selection_page_size())
-                .prompt();
-
-            match selected_app_result {
-                Ok(app) => app,
-                Err(InquireError::OperationCanceled) => {
-                    println!("{} App selection cancelled", style("ℹ️").blue());
-                    return Ok(());
-                }
-                Err(error) => return Err(anyhow::Error::from(error)),
-            }
-        };
-
-        // Launch the repository
-        workspace_manager
-            .open_repo_with_app(&item.name, &app_to_use)
-            .await?;
-
-        // Update recent repositories state
+        // Update recent repositories state with the last app chosen
         if let Some(repo_info) = workspace_manager.get_repository(&item.name) {
             let mut user_state = VibeState::load().unwrap_or_default();
             user_state.add_recent_repo(
                 item.name.clone(),
                 repo_info.path.clone(),
-                Some(app_to_use.clone()),
+                item.last_app.clone(), // Use the app from selection or previous choice
             );
             if let Err(e) = user_state.save() {
                 eprintln!("Warning: Failed to save recent repositories: {e}");
             }
         }
 
-        println!(
-            "{} Launched {} with {}",
-            style("🚀").green(),
-            style(&item.name).cyan().bold(),
-            style(&app_to_use).blue()
-        );
+        Ok(())
+    }
+
+    /// Quick launch from recent repos (position 1-9) - uses immediate selection
+    #[allow(dead_code)]
+    pub async fn quick_launch_recent(
+        &self,
+        workspace_manager: &mut WorkspaceManager,
+        position: usize,
+    ) -> Result<()> {
+        let user_state = VibeState::load().unwrap_or_default();
+        let recent_repos = user_state.get_recent_repos(9);
+
+        if let Some(recent_repo) = recent_repos.get(position - 1) {
+            let repo_name = &recent_repo.repo_id;
+            let default_app = "vscode".to_string();
+            let last_app = recent_repo.last_app.as_ref().unwrap_or(&default_app);
+
+            // Immediate opening with saved app - NO choice menu
+            workspace_manager
+                .open_repo_with_app_options(repo_name, last_app, false)
+                .await?;
+
+            // Update access tracking
+            let mut updated_state = VibeState::load().unwrap_or_default();
+            updated_state.add_recent_repo(
+                repo_name.clone(),
+                recent_repo.path.clone(),
+                Some(last_app.clone()),
+            );
+            if let Err(e) = updated_state.save() {
+                eprintln!("Warning: Failed to save recent repositories: {e}");
+            }
+
+            println!(
+                "{} Opened {} with {} (quick launch #{})",
+                style("🚀").green(),
+                style(repo_name).cyan().bold(),
+                style(last_app).blue(),
+                position
+            );
+        } else {
+            anyhow::bail!("No repository found at position {}", position);
+        }
 
         Ok(())
     }
@@ -284,6 +289,7 @@ impl QuickLauncher {
     }
 
     /// Update git status cache in background for specific repositories
+    #[allow(dead_code)]
     pub async fn update_git_status_cache(
         &self,
         workspace_manager: &WorkspaceManager,
@@ -320,6 +326,7 @@ impl QuickLauncher {
     }
 
     /// Get cache statistics for monitoring
+    #[allow(dead_code)]
     pub async fn get_cache_stats(&self) -> Result<CacheStatistics> {
         let repo_stats = self.repo_cache.get_stats().await?;
         let git_stats = self.git_cache.get_stats().await?;

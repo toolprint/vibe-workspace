@@ -10,9 +10,13 @@ pub mod repo_analyzer;
 mod sync_operations;
 pub mod templates;
 
+pub use config::{Repository, WorkspaceConfig};
+
+// Test-only exports - these are only used by app module tests
+#[cfg(test)]
 pub use config::{
-    AppIntegrations, ClaudeAgentsIntegration, CursorIntegration, ITerm2Integration, Repository,
-    VSCodeIntegration, WezTermIntegration, WindsurfIntegration, WorkspaceConfig, WorkspaceInfo,
+    CursorIntegration, ITerm2Integration, VSCodeIntegration, WezTermIntegration,
+    WindsurfIntegration, WorkspaceInfo,
 };
 pub use manager::{AppSelection, WorkspaceManager};
 pub use templates::TemplateManager;

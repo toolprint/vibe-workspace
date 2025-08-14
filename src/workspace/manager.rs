@@ -25,6 +25,13 @@ pub struct AppSelection {
     pub currently_configured: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct AppChoice {
+    pub app: String,
+    pub display: String,
+    pub is_configured: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct AppConfigState {
     pub warp: Option<String>, // template name if configured
@@ -1430,6 +1437,36 @@ impl WorkspaceManager {
         Ok(())
     }
 
+    /// Smart open repository - shows app choice menu with configured and available apps
+    pub async fn smart_open_repository(&self, repo_name: &str) -> Result<()> {
+        let repo = self
+            .config
+            .repositories
+            .iter()
+            .find(|r| r.name == repo_name)
+            .context("Repository not found")?;
+
+        // Get configured apps (if any)
+        let configured_apps: Vec<String> = repo.apps.keys().cloned().collect();
+
+        // Get all available apps on system
+        let available_apps = self.get_available_apps().await;
+
+        // Build app choice menu
+        let app_choices = self.build_app_choice_menu(&configured_apps, &available_apps);
+
+        if app_choices.is_empty() {
+            anyhow::bail!("No compatible apps found on this system");
+        }
+
+        // Prompt user to choose app
+        let selected_app = self.prompt_app_selection(&app_choices)?;
+
+        // Open with selected app using existing logic
+        self.open_repo_with_app_options(repo_name, &selected_app, false)
+            .await
+    }
+
     /// Open a repository with a configured app
     pub async fn open_repo_with_app(&self, repo_name: &str, app: &str) -> Result<()> {
         self.open_repo_with_app_options(repo_name, app, false).await
@@ -2286,6 +2323,75 @@ impl WorkspaceManager {
             }
             _ => false,
         }
+    }
+
+    /// Get all available apps on the system
+    pub async fn get_available_apps(&self) -> Vec<String> {
+        let potential_apps = vec!["vscode", "cursor", "windsurf", "warp", "iterm2", "wezterm"];
+        let mut available_apps = Vec::new();
+
+        for app in potential_apps {
+            if self.is_app_available(app).await {
+                available_apps.push(app.to_string());
+            }
+        }
+
+        available_apps
+    }
+
+    /// Build app choice menu with configured and available apps
+    fn build_app_choice_menu(
+        &self,
+        configured_apps: &[String],
+        available_apps: &[String],
+    ) -> Vec<AppChoice> {
+        let mut choices = Vec::new();
+
+        // Configured apps first (with ✅ indicator)
+        for app in configured_apps {
+            choices.push(AppChoice {
+                app: app.clone(),
+                display: format!("✅ {} (configured with templates)", app),
+                is_configured: true,
+            });
+        }
+
+        // Available apps second (with 📁 indicator) - only if not already configured
+        for app in available_apps {
+            if !configured_apps.contains(app) {
+                choices.push(AppChoice {
+                    app: app.clone(),
+                    display: format!("📁 {} (basic mode)", app),
+                    is_configured: false,
+                });
+            }
+        }
+
+        choices
+    }
+
+    /// Prompt user to select an app from the choice menu
+    fn prompt_app_selection(&self, app_choices: &[AppChoice]) -> Result<String> {
+        use inquire::Select;
+
+        let options: Vec<String> = app_choices
+            .iter()
+            .map(|choice| choice.display.clone())
+            .collect();
+
+        let selected_display = Select::new("Choose app to open repository:", options)
+            .with_help_message("Configured apps include templates and automation")
+            .prompt()
+            .map_err(|e| anyhow::anyhow!("App selection cancelled: {}", e))?;
+
+        // Find the app name from the selected display string
+        for choice in app_choices {
+            if choice.display == selected_display {
+                return Ok(choice.app.clone());
+            }
+        }
+
+        anyhow::bail!("Invalid app selection")
     }
 
     // Cache management methods

@@ -34,6 +34,7 @@ impl Default for BulkCloneOptions {
 
 /// Target type for bulk cloning
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum TargetType {
     User,
     Organization,
@@ -67,8 +68,11 @@ pub struct SkippedRepository {
 
 /// Reason why a repository was skipped
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SkipReason {
+    #[allow(dead_code)]
     AlreadyExists(PathBuf),
+    #[allow(dead_code)]
     ExcludedByPattern(String),
     NotIncludedByPattern,
     Fork,
