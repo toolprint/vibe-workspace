@@ -22,6 +22,9 @@ pub struct WorktreeInfo {
     /// Current HEAD commit SHA
     pub head: String,
 
+    /// Task identifier used to create this worktree (if available)
+    pub task_id: Option<String>,
+
     /// Detailed status information
     pub status: WorktreeStatus,
 
@@ -241,6 +244,113 @@ impl WorktreeInfo {
             }
         }
         Ok(())
+    }
+}
+
+/// Repository-level summary statistics for worktree management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryWorktreeSummary {
+    /// Total number of worktrees (including main)
+    pub total_worktrees: usize,
+    
+    /// Number of clean worktrees
+    pub clean_worktrees: usize,
+    
+    /// Number of worktrees with uncommitted changes
+    pub dirty_worktrees: usize,
+    
+    /// Number of worktrees with remote tracking
+    pub worktrees_with_remote: usize,
+    
+    /// Number of worktrees that appear merged
+    pub merged_worktrees: usize,
+    
+    /// Number of worktrees with unpushed commits
+    pub worktrees_with_unpushed: usize,
+    
+    /// Overall health score (0.0 to 1.0)
+    pub health_score: f32,
+}
+
+impl RepositoryWorktreeSummary {
+    /// Create summary from a list of worktrees
+    pub fn from_worktrees(worktrees: &[WorktreeInfo]) -> Self {
+        let total = worktrees.len();
+        let clean = worktrees.iter().filter(|w| w.status.is_clean).count();
+        let dirty = worktrees.iter().filter(|w| !w.status.is_clean).count();
+        let with_remote = worktrees.iter().filter(|w| !matches!(w.status.remote_status, RemoteStatus::NoRemote)).count();
+        let merged = worktrees.iter().filter(|w| {
+            w.status.merge_info.as_ref().map_or(false, |info| info.is_merged)
+        }).count();
+        let with_unpushed = worktrees.iter().filter(|w| !w.status.unpushed_commits.is_empty()).count();
+        
+        // Calculate health score based on cleanliness and remote tracking
+        let health_score = if total == 0 {
+            1.0
+        } else {
+            let clean_ratio = clean as f32 / total as f32;
+            let remote_ratio = with_remote as f32 / total as f32;
+            // Weight cleanliness more heavily than remote tracking
+            (clean_ratio * 0.7 + remote_ratio * 0.3)
+        };
+        
+        Self {
+            total_worktrees: total,
+            clean_worktrees: clean,
+            dirty_worktrees: dirty,
+            worktrees_with_remote: with_remote,
+            merged_worktrees: merged,
+            worktrees_with_unpushed: with_unpushed,
+            health_score,
+        }
+    }
+    
+    /// Get a summary description string
+    pub fn summary_description(&self) -> String {
+        let mut parts = Vec::new();
+        
+        parts.push(format!("{} worktrees", self.total_worktrees));
+        
+        if self.dirty_worktrees > 0 {
+            parts.push(format!("{} dirty", self.dirty_worktrees));
+        }
+        
+        if self.worktrees_with_unpushed > 0 {
+            parts.push(format!("{} unpushed", self.worktrees_with_unpushed));
+        }
+        
+        if self.merged_worktrees > 0 {
+            parts.push(format!("{} merged", self.merged_worktrees));
+        }
+        
+        let remote_missing = self.total_worktrees - self.worktrees_with_remote;
+        if remote_missing > 0 {
+            parts.push(format!("{} no remote", remote_missing));
+        }
+        
+        parts.join(", ")
+    }
+    
+    /// Get health status icon
+    pub fn health_icon(&self) -> &'static str {
+        if self.health_score >= 0.8 {
+            "🟢"
+        } else if self.health_score >= 0.5 {
+            "🟡"
+        } else {
+            "🔴"
+        }
+    }
+    
+    /// Get health description
+    pub fn health_description(&self) -> String {
+        if self.health_score >= 0.8 {
+            "Healthy".to_string()
+        } else if self.health_score >= 0.5 {
+            "Needs attention".to_string()
+        } else {
+            "Unhealthy".to_string()
+        }
     }
 }
 
@@ -922,6 +1032,7 @@ mod tests {
             path: path.clone(),
             branch: "main".to_string(),
             head: "".to_string(),
+            task_id: None,
             status: WorktreeStatus::new(),
             age: Duration::from_secs(0),
             is_detached: false,
@@ -947,6 +1058,7 @@ mod tests {
                 path: path1,
                 branch: "main".to_string(),
                 head: "abc123".to_string(),
+                task_id: None,
                 status: WorktreeStatus::new(),
                 age: Duration::from_secs(0),
                 is_detached: false,
@@ -955,6 +1067,7 @@ mod tests {
                 path: path2,
                 branch: "feature".to_string(),
                 head: "def456".to_string(),
+                task_id: Some("feature".to_string()),
                 status: WorktreeStatus::new(),
                 age: Duration::from_secs(0),
                 is_detached: false,

@@ -153,14 +153,38 @@ impl WorktreeConfigManager {
     pub async fn get_config_summary(&self) -> Result<ConfigSummary> {
         let workspace_config = self.load_workspace_config().await?;
         
+        // Apply environment variable overrides to the global config
+        let mut global_config = workspace_config.worktree.clone();
+        
+        // Apply environment variable overrides
+        if let Ok(mode) = std::env::var("VIBE_WORKTREE_MODE") {
+            global_config.mode = match mode.to_lowercase().as_str() {
+                "global" => crate::worktree::config::WorktreeMode::Global,
+                "local" => crate::worktree::config::WorktreeMode::Local,
+                _ => global_config.mode, // Keep existing if invalid
+            };
+        }
+        
+        if let Ok(base_dir) = std::env::var("VIBE_WORKTREE_BASE") {
+            global_config.base_dir = PathBuf::from(base_dir);
+        }
+        
+        if let Ok(prefix) = std::env::var("VIBE_WORKTREE_PREFIX") {
+            global_config.prefix = prefix;
+        }
+        
         let repo_overrides = workspace_config.repositories
             .iter()
             .filter(|r| r.worktree_config.is_some())
             .map(|r| (r.name.clone(), r.worktree_config.as_ref().unwrap().clone()))
             .collect();
         
+        // Calculate resolved base directory (pass None for repo_root since this is global config)
+        let resolved_base_dir = global_config.get_resolved_base_dir(None);
+        
         Ok(ConfigSummary {
-            global_config: workspace_config.worktree.clone(),
+            global_config,
+            resolved_base_dir,
             repo_overrides,
             total_repositories: workspace_config.repositories.len(),
             enabled_repositories: workspace_config.repositories
@@ -217,6 +241,7 @@ pub struct ConfigValidationError {
 #[derive(Debug)]
 pub struct ConfigSummary {
     pub global_config: WorktreeConfig,
+    pub resolved_base_dir: PathBuf,
     pub repo_overrides: Vec<(String, RepositoryWorktreeConfig)>,
     pub total_repositories: usize,
     pub enabled_repositories: usize,
@@ -228,8 +253,15 @@ impl ConfigSummary {
         let mut summary = String::new();
         
         summary.push_str("Worktree Configuration Summary:\n");
+        summary.push_str(&format!("  Mode: {:?}\n", self.global_config.mode));
         summary.push_str(&format!("  Global prefix: {}\n", self.global_config.prefix));
-        summary.push_str(&format!("  Global base directory: {}\n", self.global_config.base_dir.display()));
+        summary.push_str(&format!("  Base directory (configured): {}\n", self.global_config.base_dir.display()));
+        
+        // Show resolved path if different from configured path
+        if self.resolved_base_dir != self.global_config.base_dir {
+            summary.push_str(&format!("  Base directory (resolved): {}\n", self.resolved_base_dir.display()));
+        }
+        
         summary.push_str(&format!("  Total repositories: {}\n", self.total_repositories));
         summary.push_str(&format!("  Enabled repositories: {}\n", self.enabled_repositories));
         
@@ -281,6 +313,7 @@ mod tests {
                     branch: None,
                     apps: std::collections::HashMap::new(),
                     worktree_config: Some(RepositoryWorktreeConfig {
+                        mode: None,
                         prefix: Some("custom-prefix/".to_string()),
                         base_dir: Some(PathBuf::from("/custom/path")),
                         cleanup: None,
@@ -348,6 +381,7 @@ mod tests {
     fn test_repository_config_merge() {
         let global = WorktreeConfig::default();
         let repo_config = RepositoryWorktreeConfig {
+            mode: None,
             prefix: Some("custom-prefix/".to_string()),
             base_dir: Some(PathBuf::from("/custom/path")),
             cleanup: None,

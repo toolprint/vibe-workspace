@@ -3,10 +3,32 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Worktree storage mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorktreeMode {
+    /// Store worktrees locally within each repository (default)
+    Local,
+    /// Store worktrees globally in a central location
+    Global,
+}
+
+impl Default for WorktreeMode {
+    fn default() -> Self {
+        Self::Local
+    }
+}
+
 /// Configuration for worktree management
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeConfig {
-    /// Base directory for all worktrees (relative to repo root)
+    /// Worktree storage mode (local or global)
+    #[serde(default)]
+    pub mode: WorktreeMode,
+
+    /// Base directory for worktrees
+    /// - Local mode: relative to repo root (e.g., ".worktrees")
+    /// - Global mode: absolute path or relative to workspace root
     pub base_dir: PathBuf,
 
     /// Default branch prefix for managed worktrees
@@ -76,6 +98,7 @@ pub struct WorktreeStatusConfig {
 impl Default for WorktreeConfig {
     fn default() -> Self {
         Self {
+            mode: WorktreeMode::default(),
             base_dir: PathBuf::from(".worktrees"),
             prefix: "vibe-ws/".to_string(),
             auto_gitignore: true,
@@ -125,9 +148,44 @@ impl Default for WorktreeStatusConfig {
 }
 
 impl WorktreeConfig {
+    /// Get the resolved base directory based on mode and configuration
+    pub fn get_resolved_base_dir(&self, repo_root: Option<&std::path::Path>) -> PathBuf {
+        match self.mode {
+            WorktreeMode::Local => {
+                if self.base_dir.is_absolute() {
+                    self.base_dir.clone()
+                } else if let Some(root) = repo_root {
+                    root.join(&self.base_dir)
+                } else {
+                    self.base_dir.clone() // Fallback to relative path
+                }
+            }
+            WorktreeMode::Global => {
+                if self.base_dir.is_absolute() {
+                    self.base_dir.clone()
+                } else {
+                    // Resolve to global location (matching operations.rs logic)
+                    if let Some(home) = dirs::home_dir() {
+                        home.join(".toolprint").join("vibe-workspace").join("worktrees")
+                    } else {
+                        std::env::temp_dir().join("vibe-worktrees")
+                    }
+                }
+            }
+        }
+    }
+
     /// Load configuration from environment variables, falling back to defaults
     pub fn from_env() -> Self {
         let mut config = Self::default();
+
+        if let Ok(mode) = std::env::var("VIBE_WORKTREE_MODE") {
+            config.mode = match mode.to_lowercase().as_str() {
+                "global" => WorktreeMode::Global,
+                "local" => WorktreeMode::Local,
+                _ => WorktreeMode::Local,
+            };
+        }
 
         if let Ok(base_dir) = std::env::var("VIBE_WORKTREE_BASE") {
             config.base_dir = PathBuf::from(base_dir);
@@ -265,6 +323,7 @@ impl WorktreeConfig {
         r#"Worktree Configuration Options:
 
 Environment Variables:
+  VIBE_WORKTREE_MODE              Storage mode: local or global (default: local)
   VIBE_WORKTREE_BASE              Base directory for worktrees (default: .worktrees)
   VIBE_WORKTREE_PREFIX            Branch prefix for managed worktrees (default: vibe-ws/)
   VIBE_WORKTREE_EDITOR            Default editor command (default: code)
@@ -293,6 +352,7 @@ Configuration File:
 
 /// Environment variable documentation
 pub const WORKTREE_ENV_VARS: &[(&str, &str, &str)] = &[
+    ("VIBE_WORKTREE_MODE", "local", "Worktree storage mode (local or global)"),
     ("VIBE_WORKTREE_BASE", ".worktrees", "Base directory for worktrees"),
     ("VIBE_WORKTREE_PREFIX", "vibe-ws/", "Branch prefix for managed worktrees"),
     ("VIBE_WORKTREE_EDITOR", "code", "Default editor command"),
@@ -417,5 +477,60 @@ mod config_tests {
         }
         
         assert!(WORKTREE_ENV_VARS.len() > 10); // Should have many env vars documented
+    }
+    
+    #[test]
+    fn test_worktree_mode() {
+        // Test default mode
+        let config = WorktreeConfig::default();
+        assert_eq!(config.mode, WorktreeMode::Local);
+        
+        // Test mode serialization/deserialization
+        let local_config = WorktreeConfig {
+            mode: WorktreeMode::Local,
+            ..Default::default()
+        };
+        
+        let global_config = WorktreeConfig {
+            mode: WorktreeMode::Global,
+            ..Default::default()
+        };
+        
+        // Test serialization
+        let local_yaml = serde_yaml::to_string(&local_config).unwrap();
+        let global_yaml = serde_yaml::to_string(&global_config).unwrap();
+        
+        assert!(local_yaml.contains("mode: local"));
+        assert!(global_yaml.contains("mode: global"));
+        
+        // Test deserialization
+        let deserialized_local: WorktreeConfig = serde_yaml::from_str(&local_yaml).unwrap();
+        let deserialized_global: WorktreeConfig = serde_yaml::from_str(&global_yaml).unwrap();
+        
+        assert_eq!(deserialized_local.mode, WorktreeMode::Local);
+        assert_eq!(deserialized_global.mode, WorktreeMode::Global);
+    }
+    
+    #[test]
+    fn test_environment_variable_mode_override() {
+        use std::env;
+        
+        // Test local mode
+        env::set_var("VIBE_WORKTREE_MODE", "local");
+        let config = WorktreeConfig::from_env();
+        assert_eq!(config.mode, WorktreeMode::Local);
+        
+        // Test global mode
+        env::set_var("VIBE_WORKTREE_MODE", "global");
+        let config = WorktreeConfig::from_env();
+        assert_eq!(config.mode, WorktreeMode::Global);
+        
+        // Test invalid mode defaults to local
+        env::set_var("VIBE_WORKTREE_MODE", "invalid");
+        let config = WorktreeConfig::from_env();
+        assert_eq!(config.mode, WorktreeMode::Local);
+        
+        // Clean up
+        env::remove_var("VIBE_WORKTREE_MODE");
     }
 }

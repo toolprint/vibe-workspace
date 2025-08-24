@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use crate::worktree::config::{
-    WorktreeConfig, WorktreeCleanupConfig, WorktreeMergeDetectionConfig
+    WorktreeConfig, WorktreeMode, WorktreeCleanupConfig, WorktreeMergeDetectionConfig
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +43,9 @@ pub struct Repository {
 /// Repository-specific worktree configuration overrides
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RepositoryWorktreeConfig {
+    /// Override worktree storage mode for this repository
+    pub mode: Option<WorktreeMode>,
+    
     /// Override global base directory for this repository
     pub base_dir: Option<PathBuf>,
     
@@ -63,6 +66,7 @@ impl RepositoryWorktreeConfig {
     /// Merge repository-specific config with global config
     pub fn merge_with_global(&self, global: &WorktreeConfig) -> WorktreeConfig {
         WorktreeConfig {
+            mode: self.mode.unwrap_or(global.mode),
             base_dir: self.base_dir.clone().unwrap_or_else(|| global.base_dir.clone()),
             prefix: self.prefix.clone().unwrap_or_else(|| global.prefix.clone()),
             auto_gitignore: global.auto_gitignore, // Always use global setting
@@ -83,6 +87,7 @@ impl RepositoryWorktreeConfig {
 impl Default for RepositoryWorktreeConfig {
     fn default() -> Self {
         Self {
+            mode: None,
             base_dir: None,
             prefix: None,
             cleanup: None,

@@ -28,7 +28,17 @@ impl WorktreeManager {
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
 
-        let operations = WorktreeOperations::new(workspace_root.clone(), config.clone());
+        // Extract repository name from workspace_root
+        let repo_name = workspace_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+
+        let operations = if let Some(name) = repo_name {
+            WorktreeOperations::new_with_repo_name(workspace_root.clone(), config.clone(), name)
+        } else {
+            WorktreeOperations::new(workspace_root.clone(), config.clone())
+        };
 
         Ok(Self {
             operations,
@@ -50,22 +60,41 @@ impl WorktreeManager {
         // Migrate legacy configuration if needed
         config_manager.migrate_legacy_config().await?;
         
+        // Extract repository name if repo_path is provided
+        let repo_name = repo_path.as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+        
         // Load configuration for specific repository or use global
-        let config = if let Some(path) = repo_path {
-            config_manager.load_config_for_repo(&path).await?
+        let config = if let Some(ref path) = repo_path {
+            config_manager.load_config_for_repo(path).await?
         } else {
             WorktreeConfig::load_with_overrides()
                 .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?
         };
         
-        let operations = WorktreeOperations::new(
-            workspace_manager.get_workspace_root().clone(), 
-            config.clone()
-        );
+        // Use the appropriate repo root (repo_path if provided, otherwise workspace root)
+        let repo_root = repo_path.as_ref()
+            .unwrap_or(workspace_manager.get_workspace_root())
+            .clone();
+        
+        let operations = if let Some(name) = repo_name {
+            WorktreeOperations::new_with_repo_name(
+                repo_root.clone(),
+                config.clone(),
+                name
+            )
+        } else {
+            WorktreeOperations::new(
+                repo_root.clone(),
+                config.clone()
+            )
+        };
         
         Ok(Self {
             operations,
-            workspace_root: workspace_manager.get_workspace_root().clone(),
+            workspace_root: repo_root,
             config,
             config_manager: Some(config_manager),
         })
@@ -120,6 +149,11 @@ impl WorktreeManager {
     /// Get a reference to the config
     pub fn get_config(&self) -> &WorktreeConfig {
         &self.config
+    }
+
+    /// Resolve target (task ID, branch name, or path) to worktree info
+    pub async fn resolve_worktree_target(&self, target: &str) -> Result<WorktreeInfo> {
+        self.operations.resolve_worktree_target(target).await
     }
 
     /// Get a clone of the operations (for cleanup)
