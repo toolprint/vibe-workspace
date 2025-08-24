@@ -143,3 +143,5 @@ build/
 # Codanna
 .codanna/
 .fastembed_cache/
+# Vibe worktree directories
+.worktrees/

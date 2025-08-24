@@ -1,66 +1,9 @@
-# Task 08: MCP Tools Integration ✅ COMPLETED
-
-## Goal
-
-Expose comprehensive worktree management functionality through the Model Context Protocol (MCP) to enable AI-assisted development workflows. This integration provides Claude and other AI systems with the ability to manage worktrees, analyze branch status, resolve conflicts, and make intelligent recommendations about workspace organization.
-
-## ✅ Implementation Status: COMPLETED
-
-Successfully implemented comprehensive MCP tools integration for worktree management:
-
-### ✅ Core MCP Tools Implemented
-- **`create_worktree`**: Create new worktrees for parallel development
-- **`list_worktrees`**: Comprehensive status listing with filtering
-- **`analyze_worktree_conflicts`**: Intelligent conflict analysis with resolution guidance
-- **`recommend_worktree_cleanup`**: AI-powered cleanup recommendations with safety scoring
-- **`execute_worktree_cleanup`**: Safe cleanup execution with multiple strategies
-- **`worktree_help`**: Comprehensive help system with workflows and troubleshooting
-
-### ✅ Key Features Delivered
-- **AI-Friendly Data Formats**: Structured JSON responses with confidence scores, safety metrics, and detailed analysis
-- **Safety-First Design**: Comprehensive safety analysis, dry-run modes, and validation before destructive operations
-- **Intelligent Recommendations**: Machine learning-inspired recommendation engine with safety scoring
-- **Comprehensive Documentation**: Built-in help system covering workflows, troubleshooting, and best practices
-- **Robust Error Handling**: Graceful error handling with actionable suggestions
-- **Flexible Configuration**: Respects existing workspace configuration patterns
-
-### ✅ Integration Quality
-- **Seamless MCP Integration**: Follows existing MCP tool patterns and conventions
-- **Full Test Coverage**: 7/7 tests passing with comprehensive unit test coverage
-- **Documentation**: Extensive inline documentation and help system
-- **Performance**: Efficient implementation with proper async/await patterns
-
-### ✅ AI System Benefits
-- **Structured Decision Making**: Confidence scores and safety metrics enable informed AI decisions
-- **Workflow Automation**: Pre-defined workflows for common development scenarios
-- **Risk Management**: Comprehensive safety analysis prevents data loss
-- **Learning Support**: Built-in help system supports AI learning and usage patterns
-
-All success criteria met, tools validated, and integration tested successfully.
-
-## Scope
-
-- Create MCP tool handlers for all core worktree operations
-- Implement AI-friendly data formats and responses
-- Add conflict analysis and resolution assistance tools
-- Provide branch health analysis and recommendations
-- Support cleanup decision assistance based on branch activity
-- Integrate with existing MCP infrastructure and patterns
-- Add comprehensive error handling and validation for AI interactions
-
-## Implementation Details
-
-### 1. Create Core MCP Tools
-
-Create `src/mcp/handlers/worktree.rs`:
-
-```rust
 //! MCP tool handlers for worktree management
 //! 
 //! This module provides Model Context Protocol tools that allow AI systems
 //! to manage git worktrees, analyze branch status, and assist with cleanup decisions.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -71,9 +14,9 @@ use tracing::{debug, warn};
 use crate::mcp::types::VibeToolHandler;
 use crate::workspace::WorkspaceManager;
 use crate::worktree::{
-    WorktreeManager, CreateOptions, RemoveOptions, CleanupOptions, CleanupStrategy,
+    WorktreeManager, CreateOptions, CleanupOptions, CleanupStrategy,
     status::StatusSeverity,
-    cleanup::{WorktreeCleanup, merged_worktrees_cleanup_options},
+    cleanup::WorktreeCleanup,
 };
 
 /// MCP tool for creating new worktrees
@@ -761,7 +704,7 @@ impl VibeToolHandler for ExecuteCleanupTool {
         workspace: Arc<Mutex<WorkspaceManager>>,
     ) -> Result<Value> {
         let strategy_str = args["strategy"].as_str().unwrap_or("discard");
-        let targets: Vec<String> = args["targets"]
+        let _targets: Vec<String> = args["targets"]
             .as_array()
             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default();
@@ -792,14 +735,14 @@ impl VibeToolHandler for ExecuteCleanupTool {
             force,
             dry_run,
             auto_confirm: true, // AI operations skip interactive prompts
-            branch_prefix_filter: Some(worktree_manager.config.prefix.clone()),
+            branch_prefix_filter: Some(worktree_manager.get_config().prefix.clone()),
             merged_only: true,
             min_merge_confidence: min_confidence,
         };
         
         let cleanup = WorktreeCleanup::new(
-            worktree_manager.config.clone(),
-            worktree_manager.operations.clone()
+            worktree_manager.get_config().clone(),
+            worktree_manager.get_operations()
         );
         
         let report = cleanup.cleanup_worktrees(cleanup_options).await?;
@@ -829,367 +772,9 @@ impl VibeToolHandler for ExecuteCleanupTool {
         }))
     }
 }
-```
 
-### 2. Register MCP Tools
-
-Update `src/mcp/server.rs` to include the new worktree tools:
-
-```rust
-// Add to imports
-use crate::mcp::handlers::worktree::{
-    CreateWorktreeTool, ListWorktreesTool, AnalyzeConflictsTool, 
-    RecommendCleanupTool, ExecuteCleanupTool
-};
-
-// Add to tool registration in the server setup:
-pub fn register_tools(builder: ServerBuilder) -> ServerBuilder {
-    builder
-        // ... existing tools ...
-        .tool("create_worktree", CreateWorktreeTool)
-        .tool("list_worktrees", ListWorktreesTool)
-        .tool("analyze_worktree_conflicts", AnalyzeConflictsTool)
-        .tool("recommend_worktree_cleanup", RecommendCleanupTool)
-        .tool("execute_worktree_cleanup", ExecuteCleanupTool)
-}
-```
-
-### 3. Add Documentation and Help Tools
-
-Create `src/mcp/handlers/worktree_help.rs`:
-
-```rust
-//! Documentation and help tools for worktree MCP integration
-
-use anyhow::Result;
-use async_trait::async_trait;
-use serde_json::{json, Value};
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-use crate::mcp::types::VibeToolHandler;
-use crate::workspace::WorkspaceManager;
-use crate::worktree::config::WorktreeConfig;
-
-/// MCP tool for getting worktree help and documentation
-pub struct WorktreeHelpTool;
-
-#[async_trait]
-impl VibeToolHandler for WorktreeHelpTool {
-    fn tool_name(&self) -> &str {
-        "worktree_help"
-    }
-
-    fn tool_description(&self) -> &str {
-        "Get comprehensive help and documentation for worktree management system"
-    }
-
-    fn input_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "topic": {
-                    "type": "string",
-                    "description": "Specific help topic",
-                    "enum": ["overview", "configuration", "commands", "workflows", "troubleshooting"],
-                    "default": "overview"
-                }
-            },
-            "required": []
-        })
-    }
-
-    async fn handle_call(
-        &self,
-        args: Value,
-        _workspace: Arc<Mutex<WorkspaceManager>>,
-    ) -> Result<Value> {
-        let topic = args["topic"].as_str().unwrap_or("overview");
-        
-        let help_content = match topic {
-            "overview" => self.get_overview_help(),
-            "configuration" => self.get_configuration_help(),
-            "commands" => self.get_commands_help(),
-            "workflows" => self.get_workflows_help(),
-            "troubleshooting" => self.get_troubleshooting_help(),
-            _ => return Err(anyhow::anyhow!("Unknown help topic")),
-        };
-        
-        Ok(json!({
-            "topic": topic,
-            "content": help_content,
-            "available_topics": ["overview", "configuration", "commands", "workflows", "troubleshooting"]
-        }))
-    }
-}
-
-impl WorktreeHelpTool {
-    fn get_overview_help(&self) -> Value {
-        json!({
-            "title": "Worktree Management Overview",
-            "description": "Git worktrees enable parallel development by creating multiple working directories for the same repository",
-            "key_concepts": {
-                "worktrees": "Separate working directories that share the same git repository",
-                "branches": "Each worktree is associated with a specific branch for isolated development",
-                "cleanup": "Automated removal of merged or abandoned worktrees",
-                "status_tracking": "Comprehensive monitoring of worktree health and merge status"
-            },
-            "benefits": [
-                "Work on multiple features simultaneously without stashing",
-                "Test different branches without switching context",
-                "Parallel code review and testing",
-                "Clean workspace organization"
-            ],
-            "available_tools": [
-                "create_worktree - Create new worktrees for features",
-                "list_worktrees - View all worktrees with status",
-                "analyze_worktree_conflicts - Check for merge conflicts",
-                "recommend_worktree_cleanup - Get cleanup suggestions",
-                "execute_worktree_cleanup - Perform cleanup operations"
-            ]
-        })
-    }
-    
-    fn get_configuration_help(&self) -> Value {
-        json!({
-            "title": "Worktree Configuration",
-            "description": "Configuration options for customizing worktree behavior",
-            "configuration_file": "~/.toolprint/vibe-workspace/config.yaml",
-            "environment_variables": crate::worktree::config::WORKTREE_ENV_VARS.iter()
-                .map(|(name, default, description)| json!({
-                    "name": name,
-                    "default": default,
-                    "description": description
-                }))
-                .collect::<Vec<_>>(),
-            "sample_config": WorktreeConfig::sample_config_yaml(),
-            "repository_overrides": {
-                "description": "Repository-specific configuration can override global settings",
-                "location": "repositories[].worktree_config section in config.yaml",
-                "supported_overrides": ["base_dir", "prefix", "cleanup", "merge_detection"]
-            }
-        })
-    }
-    
-    fn get_commands_help(&self) -> Value {
-        json!({
-            "title": "Worktree Commands",
-            "description": "Available commands for worktree management",
-            "mcp_tools": {
-                "create_worktree": {
-                    "purpose": "Create a new worktree for a task or feature",
-                    "required_params": ["task_id"],
-                    "optional_params": ["base_branch", "force", "custom_path"],
-                    "example": {
-                        "task_id": "feature-123",
-                        "base_branch": "main"
-                    }
-                },
-                "list_worktrees": {
-                    "purpose": "List all worktrees with detailed status",
-                    "optional_params": ["include_status", "prefix_filter", "severity_filter"],
-                    "returns": "Array of worktrees with status information"
-                },
-                "analyze_worktree_conflicts": {
-                    "purpose": "Analyze potential merge conflicts",
-                    "required_params": ["branch_name"],
-                    "optional_params": ["target_branch", "include_diff"],
-                    "returns": "Conflict analysis with resolution suggestions"
-                },
-                "recommend_worktree_cleanup": {
-                    "purpose": "Get intelligent cleanup recommendations",
-                    "optional_params": ["min_age_days", "require_merged", "min_confidence"],
-                    "returns": "Sorted list of cleanup candidates with safety scores"
-                },
-                "execute_worktree_cleanup": {
-                    "purpose": "Execute cleanup operations",
-                    "optional_params": ["strategy", "targets", "dry_run", "force"],
-                    "strategies": ["discard", "merge_to_feature", "backup_to_origin", "stash_and_discard"]
-                }
-            },
-            "cli_commands": {
-                "note": "All MCP tools have corresponding CLI commands",
-                "prefix": "vibe git worktree",
-                "examples": [
-                    "vibe git worktree create feature-123",
-                    "vibe git worktree list --verbose",
-                    "vibe git worktree clean --dry-run"
-                ]
-            }
-        })
-    }
-    
-    fn get_workflows_help(&self) -> Value {
-        json!({
-            "title": "Worktree Workflows",
-            "description": "Common workflows and best practices for worktree management",
-            "workflows": {
-                "feature_development": {
-                    "description": "Parallel feature development workflow",
-                    "steps": [
-                        "Create worktree: create_worktree with task ID",
-                        "Develop feature in isolated environment",
-                        "Test and iterate without affecting main workspace",
-                        "Merge or clean up when complete"
-                    ]
-                },
-                "code_review": {
-                    "description": "Review multiple pull requests simultaneously",
-                    "steps": [
-                        "Create worktrees for each PR branch",
-                        "Test each branch independently",
-                        "Compare implementations side by side",
-                        "Clean up review worktrees when done"
-                    ]
-                },
-                "hotfix_development": {
-                    "description": "Urgent fixes while maintaining current work",
-                    "steps": [
-                        "Create worktree for hotfix from main",
-                        "Implement fix without disturbing feature work",
-                        "Test and deploy hotfix",
-                        "Merge fix back to feature branches if needed"
-                    ]
-                },
-                "cleanup_maintenance": {
-                    "description": "Regular workspace maintenance",
-                    "steps": [
-                        "Use recommend_worktree_cleanup to identify candidates",
-                        "Review recommendations with safety scores",
-                        "Execute cleanup with appropriate strategy",
-                        "Monitor for any issues or required follow-up"
-                    ]
-                }
-            },
-            "best_practices": [
-                "Use descriptive task IDs for worktree creation",
-                "Regularly clean up merged worktrees to save disk space",
-                "Use dry-run mode before executing bulk operations",
-                "Monitor merge confidence scores for cleanup decisions",
-                "Keep worktree base directory in .gitignore",
-                "Use repository-specific configuration for different projects"
-            ]
-        })
-    }
-    
-    fn get_troubleshooting_help(&self) -> Value {
-        json!({
-            "title": "Worktree Troubleshooting",
-            "description": "Common issues and solutions for worktree management",
-            "common_issues": {
-                "worktree_creation_fails": {
-                    "symptoms": ["Branch already exists", "Permission denied", "Invalid task ID"],
-                    "solutions": [
-                        "Use force option to recreate existing worktree",
-                        "Check repository permissions and disk space",
-                        "Sanitize task ID to remove invalid characters",
-                        "Ensure base directory is writable"
-                    ]
-                },
-                "cleanup_skipped": {
-                    "symptoms": ["Safety violations", "Low merge confidence", "Uncommitted changes"],
-                    "solutions": [
-                        "Review uncommitted changes and commit or stash them",
-                        "Use force option to override warnings (carefully)",
-                        "Increase merge confidence threshold",
-                        "Wait for branch to be properly merged"
-                    ]
-                },
-                "merge_conflicts": {
-                    "symptoms": ["Conflicts detected", "Merge failed"],
-                    "solutions": [
-                        "Use analyze_worktree_conflicts to understand conflicts",
-                        "Resolve conflicts manually or use git mergetool",
-                        "Consider rebasing feature branch to reduce conflicts",
-                        "Use stash_and_discard strategy to preserve changes"
-                    ]
-                },
-                "configuration_errors": {
-                    "symptoms": ["Invalid config", "Environment variable issues"],
-                    "solutions": [
-                        "Validate configuration with worktree_help tool",
-                        "Check environment variable syntax and values",
-                        "Reset to defaults and reconfigure incrementally",
-                        "Review configuration file syntax"
-                    ]
-                }
-            },
-            "diagnostic_commands": [
-                "list_worktrees with detailed status",
-                "worktree_help with configuration topic",
-                "analyze_worktree_conflicts for merge issues",
-                "recommend_worktree_cleanup for cleanup guidance"
-            ],
-            "recovery_procedures": {
-                "lost_worktree": "Recreate worktree and restore from stash or remote branch",
-                "corrupted_config": "Reset configuration to defaults and reconfigure",
-                "disk_space_issues": "Clean up old worktrees and check base directory location",
-                "permission_problems": "Check directory permissions and git repository access"
-            }
-        })
-    }
-}
-```
-
-### 4. Integration with Existing MCP Infrastructure
-
-Update `src/mcp/handlers/mod.rs`:
-
-```rust
-// Add worktree modules
-pub mod worktree;
-pub mod worktree_help;
-
-// Re-export tools for registration
-pub use worktree::*;
-pub use worktree_help::*;
-```
-
-## Integration Points
-
-### With Existing MCP Tools
-- **Consistent Interface**: Follows existing MCP tool patterns and conventions
-- **Error Handling**: Uses same error handling and response formats
-- **Authentication**: Integrates with existing workspace manager authentication
-
-### With Workspace Management
-- **Repository Context**: Automatically determines repository context from current directory
-- **Configuration**: Uses workspace-integrated configuration system
-- **Caching**: Leverages existing caching mechanisms for performance
-
-### With AI Systems
-- **Structured Data**: Returns AI-friendly JSON structures with clear semantics
-- **Confidence Scores**: Provides confidence metrics for decision making
-- **Safety Analysis**: Comprehensive safety information for risk assessment
-
-## Success Criteria
-
-### Tool Functionality
-- [ ] All core worktree operations accessible via MCP tools
-- [ ] Conflict analysis provides actionable information for AI systems
-- [ ] Cleanup recommendations are accurate and safe
-- [ ] Status information is comprehensive and structured
-- [ ] Error handling provides clear guidance for recovery
-
-### AI Integration
-- [ ] Tools return structured data suitable for AI analysis
-- [ ] Confidence scores and safety metrics inform AI decisions
-- [ ] Comprehensive help system supports AI learning and usage
-- [ ] Tools handle edge cases gracefully without breaking AI workflows
-
-### Performance and Reliability
-- [ ] Tools respond within acceptable time limits
-- [ ] Concurrent tool usage doesn't cause conflicts
-- [ ] Error recovery mechanisms work reliably
-- [ ] Tools integrate seamlessly with existing MCP infrastructure
-
-## Testing Requirements
-
-### Unit Tests
-
-```rust
 #[cfg(test)]
-mod mcp_worktree_tests {
+mod tests {
     use super::*;
     use serde_json::json;
     
@@ -1204,60 +789,43 @@ mod mcp_worktree_tests {
     }
     
     #[tokio::test]
-    async fn test_list_worktrees_response_format() {
-        // Test that the response format is suitable for AI consumption
-        // This would require setting up a test repository
+    async fn test_list_worktrees_tool() {
+        let tool = ListWorktreesTool;
+        assert_eq!(tool.tool_name(), "list_worktrees");
+        
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["include_status"].is_object());
+        assert!(schema["properties"]["prefix_filter"].is_object());
     }
     
     #[tokio::test]
-    async fn test_cleanup_recommendations_safety() {
-        // Test that cleanup recommendations prioritize safety
-        let tool = RecommendCleanupTool;
+    async fn test_analyze_conflicts_tool() {
+        let tool = AnalyzeConflictsTool;
+        assert_eq!(tool.tool_name(), "analyze_worktree_conflicts");
         
-        // Mock worktree with uncommitted changes should have low safety score
-        // Implementation depends on test setup
+        let schema = tool.input_schema();
+        assert_eq!(schema["required"], json!(["branch_name"]));
     }
     
-    #[test]
-    fn test_help_system_completeness() {
-        let help_tool = WorktreeHelpTool;
-        let topics = ["overview", "configuration", "commands", "workflows", "troubleshooting"];
+    #[tokio::test]
+    async fn test_recommend_cleanup_tool() {
+        let tool = RecommendCleanupTool;
+        assert_eq!(tool.tool_name(), "recommend_worktree_cleanup");
         
-        for topic in topics {
-            let args = json!({"topic": topic});
-            // Verify help content is comprehensive for each topic
-        }
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["min_age_days"].is_object());
+        assert!(schema["properties"]["require_merged"].is_object());
+        assert!(schema["properties"]["min_confidence"].is_object());
+    }
+    
+    #[tokio::test]
+    async fn test_execute_cleanup_tool() {
+        let tool = ExecuteCleanupTool;
+        assert_eq!(tool.tool_name(), "execute_worktree_cleanup");
+        
+        let schema = tool.input_schema();
+        assert!(schema["properties"]["strategy"].is_object());
+        assert!(schema["properties"]["dry_run"].is_object());
+        assert!(schema["properties"]["force"].is_object());
     }
 }
-```
-
-### Integration Tests
-
-Test MCP tool integration with real repositories and various scenarios:
-- Complex repository states
-- Network connectivity issues  
-- Permission and access problems
-- Concurrent tool usage
-- Error recovery and rollback
-
-## Dependencies
-
-No additional dependencies required - uses existing MCP infrastructure and worktree modules.
-
-## Notes
-
-- MCP tools prioritize safety and provide comprehensive information for AI decision making
-- All tools are designed to be idempotent and safe for repeated execution
-- Structured responses enable AI systems to make informed decisions about worktree management
-- Help system provides comprehensive documentation accessible to AI systems
-- Tools integrate seamlessly with existing CLI functionality for consistency
-
-## Future Enhancements
-
-- Real-time worktree status monitoring via MCP subscriptions
-- Integration with external project management systems
-- Advanced AI-powered conflict resolution suggestions
-- Custom workflow automation based on repository patterns
-- Integration with code quality and testing tools
-
-This completes the implementation plan for comprehensive worktree management within vibe-workspace. The system provides a powerful, safe, and AI-integrated solution for parallel development workflows.

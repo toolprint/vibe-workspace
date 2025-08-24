@@ -19,6 +19,7 @@ mod ui;
 mod uri;
 mod utils;
 mod workspace;
+mod worktree;
 
 use ui::{prompts, state::VibeState};
 use workspace::WorkspaceManager;
@@ -327,6 +328,169 @@ enum ConfigCommands {
 }
 
 #[derive(Subcommand)]
+enum WorktreeCommands {
+    /// Create a new worktree for parallel development
+    Create {
+        /// Task identifier to create worktree for
+        task_id: String,
+
+        /// Base branch to create worktree from
+        #[arg(short, long)]
+        base_branch: Option<String>,
+
+        /// Force creation even if branch exists
+        #[arg(short, long)]
+        force: bool,
+
+        /// Custom path for the worktree (overrides default)
+        #[arg(short, long)]
+        path: Option<PathBuf>,
+
+        /// Open worktree in editor after creation
+        #[arg(short, long)]
+        open: bool,
+
+        /// Editor command to use (overrides default)
+        #[arg(long)]
+        editor: Option<String>,
+    },
+
+    /// List all git worktrees with status
+    List {
+        /// Show only worktrees with the specified prefix
+        #[arg(short, long)]
+        prefix: Option<String>,
+
+        /// Show detailed information
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Output format: table, json, compact
+        #[arg(short, long, default_value = "table")]
+        format: String,
+
+        /// Show only worktrees with uncommitted changes
+        #[arg(short, long)]
+        dirty_only: bool,
+    },
+
+    /// Remove a worktree
+    Remove {
+        /// Branch name or worktree path to remove
+        target: String,
+
+        /// Force removal even with uncommitted changes
+        #[arg(short, long)]
+        force: bool,
+
+        /// Also delete the branch after removing worktree
+        #[arg(short, long)]
+        delete_branch: bool,
+
+        /// Skip confirmation prompts
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Show detailed status for worktree(s)
+    Status {
+        /// Branch name to show status for (all if not specified)
+        branch: Option<String>,
+
+        /// Show all worktrees
+        #[arg(short, long)]
+        all: bool,
+
+        /// Output format: table, json, compact
+        #[arg(short, long, default_value = "table")]
+        format: String,
+
+        /// Show only files that have changed
+        #[arg(long)]
+        files_only: bool,
+    },
+
+    /// Clean up merged worktrees
+    Clean {
+        /// Show what would be done without executing
+        #[arg(short, long)]
+        dry_run: bool,
+
+        /// Force cleanup even with uncommitted changes
+        #[arg(short, long)]
+        force: bool,
+
+        /// Minimum age in hours before cleanup
+        #[arg(long)]
+        age: Option<u64>,
+
+        /// Skip confirmation prompts
+        #[arg(long)]
+        yes: bool,
+    },
+
+    /// Open a worktree in configured editor
+    Open {
+        /// Branch name or worktree path to open
+        target: String,
+
+        /// Editor command to use (overrides default)
+        #[arg(short, long)]
+        editor: Option<String>,
+    },
+
+    /// Manage worktree configuration
+    Config {
+        #[command(subcommand)]
+        action: WorktreeConfigCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorktreeConfigCommands {
+    /// Show current configuration
+    Show {
+        /// Show configuration for specific repository
+        #[arg(short, long)]
+        repository: Option<String>,
+        
+        /// Output format: yaml, json, summary
+        #[arg(short, long, default_value = "summary")]
+        format: String,
+    },
+    
+    /// Set configuration values
+    Set {
+        /// Configuration key (e.g., prefix, base_dir, cleanup.age_threshold_hours)
+        key: String,
+        
+        /// Configuration value
+        value: String,
+        
+        /// Apply to specific repository only
+        #[arg(short, long)]
+        repository: Option<String>,
+    },
+    
+    /// Reset configuration to defaults
+    Reset {
+        /// Reset specific key only
+        #[arg(short, long)]
+        key: Option<String>,
+        
+        /// Reset configuration for specific repository
+        #[arg(short, long)]
+        repository: Option<String>,
+    },
+    
+    /// Validate configuration
+    Validate,
+    
+    /// Show configuration help and environment variables
+    Help,
+}
+
+#[derive(Subcommand)]
 enum GitCommands {
     /// Scan workspace for git repositories
     Scan {
@@ -443,6 +607,596 @@ enum GitCommands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Manage git worktrees for parallel development
+    Worktree {
+        #[command(subcommand)]
+        action: WorktreeCommands,
+    },
+}
+
+/// Handle worktree subcommands
+async fn handle_worktree_command(
+    command: WorktreeCommands,
+    workspace_manager: &WorkspaceManager,
+) -> Result<()> {
+    use crate::worktree::{CreateOptions, RemoveOptions, WorktreeManager};
+    use colored::*;
+
+    // Get the current repository root
+    let current_dir = std::env::current_dir()?;
+    let git_root = find_git_repository_root(&current_dir).await?;
+
+    // Create worktree manager
+    let worktree_manager = WorktreeManager::new(git_root, None).await?;
+
+    match command {
+        WorktreeCommands::Create {
+            task_id,
+            base_branch,
+            force,
+            path,
+            open,
+            editor,
+        } => {
+            let options = CreateOptions {
+                task_id: task_id.clone(),
+                base_branch,
+                force,
+                custom_path: path,
+            };
+
+            println!("Creating worktree for task: {}", task_id.cyan());
+            let worktree_info = worktree_manager
+                .create_worktree_with_options(options)
+                .await?;
+
+            println!("✅ Created worktree:");
+            println!("  Branch: {}", worktree_info.branch.yellow());
+            println!(
+                "  Path: {}",
+                worktree_info.path.display().to_string().blue()
+            );
+
+            if open {
+                let editor_cmd = editor.unwrap_or_else(|| "code".to_string());
+                open_worktree_in_editor(&worktree_info.path, &editor_cmd).await?;
+            }
+        }
+
+        WorktreeCommands::List {
+            prefix,
+            verbose,
+            format,
+            dirty_only,
+        } => {
+            let worktrees = worktree_manager.list_worktrees().await?;
+            let filtered_worktrees = filter_worktrees(worktrees, prefix.as_deref(), dirty_only);
+
+            match format.as_str() {
+                "json" => print_worktrees_json(&filtered_worktrees)?,
+                "compact" => print_worktrees_compact(&filtered_worktrees),
+                _ => print_worktrees_table(&filtered_worktrees, verbose),
+            }
+        }
+
+        WorktreeCommands::Remove {
+            target,
+            force,
+            delete_branch,
+            yes,
+        } => {
+            if !yes && !force {
+                let confirmation = prompt_for_confirmation(&format!(
+                    "Remove worktree '{}'{}?",
+                    target,
+                    if delete_branch {
+                        " and delete branch"
+                    } else {
+                        ""
+                    }
+                ))?;
+
+                if !confirmation {
+                    println!("Cancelled.");
+                    return Ok(());
+                }
+            }
+
+            let options = RemoveOptions {
+                target: target.clone(),
+                force,
+                delete_branch,
+            };
+
+            println!("Removing worktree: {}", target.yellow());
+            worktree_manager
+                .remove_worktree_with_options(options)
+                .await?;
+            println!("✅ Worktree removed successfully");
+        }
+
+        WorktreeCommands::Status {
+            branch,
+            all,
+            format,
+            files_only,
+        } => {
+            let worktrees = worktree_manager.list_worktrees().await?;
+            let target_worktrees = if let Some(branch_name) = branch {
+                worktrees
+                    .into_iter()
+                    .filter(|w| w.branch == branch_name)
+                    .collect()
+            } else if all {
+                worktrees
+            } else {
+                // Show current worktree by default
+                worktrees
+                    .into_iter()
+                    .filter(|w| w.path == std::env::current_dir().unwrap_or_default())
+                    .collect()
+            };
+
+            if target_worktrees.is_empty() {
+                println!("No matching worktrees found");
+                return Ok(());
+            }
+
+            match format.as_str() {
+                "json" => print_status_json(&target_worktrees, files_only)?,
+                "compact" => print_status_compact(&target_worktrees, files_only),
+                _ => print_status_table(&target_worktrees, files_only),
+            }
+        }
+
+        WorktreeCommands::Clean {
+            dry_run,
+            force,
+            age,
+            yes,
+        } => {
+            use crate::worktree::cleanup::{WorktreeCleanup, CleanupOptions, CleanupStrategy};
+            
+            let cleanup_options = CleanupOptions {
+                strategy: CleanupStrategy::Discard,
+                min_age_hours: age,
+                force,
+                dry_run,
+                auto_confirm: yes,
+                branch_prefix_filter: Some(worktree_manager.get_config().prefix.clone()),
+                merged_only: true, // Default to merged only for safety
+                min_merge_confidence: 0.7,
+            };
+            
+            let cleanup = WorktreeCleanup::new(
+                worktree_manager.get_config().clone(), 
+                worktree_manager.get_operations()
+            );
+            
+            println!("🧹 {} worktree cleanup...", 
+                     if dry_run { "Simulating" } else { "Starting" });
+            
+            let report = cleanup.cleanup_worktrees(cleanup_options).await?;
+            
+            // Display results
+            print_cleanup_report(&report);
+        }
+
+        WorktreeCommands::Open { target, editor } => {
+            let worktrees = worktree_manager.list_worktrees().await?;
+            let worktree = worktrees
+                .iter()
+                .find(|w| w.branch == target || w.path.to_string_lossy() == target)
+                .ok_or_else(|| anyhow::anyhow!("Worktree not found: {}", target))?;
+
+            let editor_cmd = editor.unwrap_or_else(|| "code".to_string());
+            open_worktree_in_editor(&worktree.path, &editor_cmd).await?;
+        }
+        WorktreeCommands::Config { action } => {
+            handle_worktree_config_command(action, &workspace_manager).await?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Find git repository root from current directory
+async fn find_git_repository_root(start_dir: &std::path::Path) -> Result<PathBuf> {
+    let mut current = start_dir.to_path_buf();
+
+    loop {
+        if current.join(".git").exists() {
+            return Ok(current);
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => return Err(anyhow::anyhow!("Not in a git repository")),
+        }
+    }
+}
+
+/// Open a worktree in the specified editor
+async fn open_worktree_in_editor(path: &std::path::Path, editor: &str) -> Result<()> {
+    use anyhow::Context;
+    use tokio::process::Command;
+
+    println!("Opening worktree in {}: {}", editor, path.display());
+
+    let status = Command::new(editor)
+        .arg(path)
+        .status()
+        .await
+        .with_context(|| format!("Failed to execute editor: {}", editor))?;
+
+    if !status.success() {
+        return Err(anyhow::anyhow!(
+            "Editor command failed with status: {}",
+            status
+        ));
+    }
+
+    println!("✅ Successfully opened worktree in {}", editor);
+    Ok(())
+}
+
+/// Filter worktrees based on criteria
+fn filter_worktrees(
+    worktrees: Vec<crate::worktree::status::WorktreeInfo>,
+    prefix: Option<&str>,
+    dirty_only: bool,
+) -> Vec<crate::worktree::status::WorktreeInfo> {
+    worktrees
+        .into_iter()
+        .filter(|w| {
+            if let Some(prefix) = prefix {
+                if !w.branch.starts_with(prefix) {
+                    return false;
+                }
+            }
+
+            if dirty_only && w.status.is_clean {
+                return false;
+            }
+
+            true
+        })
+        .collect()
+}
+
+/// Print worktrees in table format
+fn print_worktrees_table(worktrees: &[crate::worktree::status::WorktreeInfo], verbose: bool) {
+    use colored::*;
+
+    if worktrees.is_empty() {
+        println!("No worktrees found");
+        return;
+    }
+
+    // Header
+    if verbose {
+        println!(
+            "{:<40} {:<20} {:<12} {:<8} {}",
+            "PATH".bold(),
+            "BRANCH".bold(),
+            "STATUS".bold(),
+            "AGE".bold(),
+            "HEAD".bold()
+        );
+        println!("{}", "─".repeat(90));
+    } else {
+        println!(
+            "{:<40} {:<20} {:<12}",
+            "PATH".bold(),
+            "BRANCH".bold(),
+            "STATUS".bold()
+        );
+        println!("{}", "─".repeat(75));
+    }
+
+    for worktree in worktrees {
+        let path_string = worktree.path.to_string_lossy();
+        let path = worktree
+            .path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&path_string);
+
+        let branch = if worktree.branch.len() > 18 {
+            format!("{}…", &worktree.branch[..17])
+        } else {
+            worktree.branch.clone()
+        };
+
+        let status = format!(
+            "{} {}",
+            worktree.status.status_icon(),
+            worktree.status.status_description()
+        );
+
+        if verbose {
+            let age = format_age(worktree.age);
+            let head = if worktree.head.len() > 7 {
+                &worktree.head[..7]
+            } else {
+                &worktree.head
+            };
+
+            println!(
+                "{:<40} {:<20} {:<12} {:<8} {}",
+                path.blue(),
+                branch.yellow(),
+                status,
+                age.dimmed(),
+                head.dimmed()
+            );
+        } else {
+            println!("{:<40} {:<20} {:<12}", path.blue(), branch.yellow(), status);
+        }
+    }
+}
+
+/// Print worktrees in compact format
+fn print_worktrees_compact(worktrees: &[crate::worktree::status::WorktreeInfo]) {
+    use colored::*;
+
+    for worktree in worktrees {
+        println!(
+            "{} {} {}",
+            worktree.status.status_icon(),
+            worktree.branch.yellow(),
+            worktree.path.display().to_string().blue()
+        );
+    }
+}
+
+/// Print worktrees in JSON format
+fn print_worktrees_json(worktrees: &[crate::worktree::status::WorktreeInfo]) -> Result<()> {
+    let json = serde_json::to_string_pretty(worktrees)?;
+    println!("{}", json);
+    Ok(())
+}
+
+/// Enhanced status table printing with detailed information
+fn print_detailed_status_table(
+    worktrees: &[crate::worktree::status::WorktreeInfo],
+    show_files: bool,
+) {
+    use colored::*;
+    use crate::worktree::status::RemoteStatus;
+    
+    for (i, worktree) in worktrees.iter().enumerate() {
+        if i > 0 {
+            println!();
+        }
+        
+        // Header
+        println!("{} {}", 
+                 worktree.status.status_icon().bold(),
+                 worktree.branch.cyan().bold());
+        println!("Path: {}", worktree.path.display().to_string().blue());
+        
+        if !worktree.head.is_empty() {
+            let short_head = if worktree.head.len() > 7 { 
+                &worktree.head[..7] 
+            } else { 
+                &worktree.head 
+            };
+            println!("HEAD: {}", short_head.dimmed());
+        }
+        
+        println!("Age: {}", format_age(worktree.age).dimmed());
+        
+        // Remote status
+        match &worktree.status.remote_status {
+            RemoteStatus::NoRemote => {
+                println!("Remote: {}", "No remote tracking".yellow());
+            }
+            RemoteStatus::UpToDate => {
+                println!("Remote: {}", "Up to date".green());
+            }
+            RemoteStatus::Ahead(count) => {
+                println!("Remote: {} {} ahead", "↑".green(), count);
+            }
+            RemoteStatus::Behind(count) => {
+                println!("Remote: {} {} behind", "↓".red(), count);
+            }
+            RemoteStatus::Diverged { ahead, behind } => {
+                println!("Remote: {} {} ahead, {} {} behind", 
+                         "↑".green(), ahead, "↓".red(), behind);
+            }
+            RemoteStatus::RemoteDeleted => {
+                println!("Remote: {}", "Remote branch deleted".red());
+            }
+        }
+        
+        // Merge information
+        if let Some(merge_info) = &worktree.status.merge_info {
+            if merge_info.is_merged {
+                println!("Merge Status: {} {} (confidence: {:.0}%)",
+                         "✅".green(),
+                         merge_info.detection_method,
+                         merge_info.confidence * 100.0);
+                         
+                if let Some(details) = &merge_info.details {
+                    println!("  Details: {}", details.dimmed());
+                }
+            } else {
+                println!("Merge Status: {} Not merged", "❌".red());
+            }
+        }
+        
+        // Changes summary
+        let changes = vec![
+            (!worktree.status.uncommitted_changes.is_empty(), 
+             format!("{} uncommitted", worktree.status.uncommitted_changes.len())),
+            (!worktree.status.untracked_files.is_empty(),
+             format!("{} untracked", worktree.status.untracked_files.len())),
+            (!worktree.status.unpushed_commits.is_empty(),
+             format!("{} unpushed", worktree.status.unpushed_commits.len())),
+        ].into_iter()
+         .filter(|(has, _)| *has)
+         .map(|(_, desc)| desc)
+         .collect::<Vec<_>>();
+        
+        if !changes.is_empty() {
+            println!("Changes: {}", changes.join(", ").yellow());
+        }
+        
+        // Show files if requested and present
+        if show_files {
+            if !worktree.status.uncommitted_changes.is_empty() {
+                println!("  {} Uncommitted changes:", "📝".dimmed());
+                for file in &worktree.status.uncommitted_changes {
+                    println!("    {}", file);
+                }
+            }
+            
+            if !worktree.status.untracked_files.is_empty() {
+                println!("  {} Untracked files:", "❓".dimmed());
+                for file in worktree.status.untracked_files.iter().take(5) {
+                    println!("    {}", file);
+                }
+                if worktree.status.untracked_files.len() > 5 {
+                    println!("    {} ... and {} more", 
+                             "⋯".dimmed(),
+                             worktree.status.untracked_files.len() - 5);
+                }
+            }
+            
+            if !worktree.status.unpushed_commits.is_empty() {
+                println!("  {} Unpushed commits:", "↑".dimmed());
+                for commit in worktree.status.unpushed_commits.iter().take(3) {
+                    println!("    {} {} ({})", 
+                             commit.id.yellow(),
+                             commit.message,
+                             commit.author.dimmed());
+                }
+                if worktree.status.unpushed_commits.len() > 3 {
+                    println!("    {} ... and {} more commits",
+                             "⋯".dimmed(),
+                             worktree.status.unpushed_commits.len() - 3);
+                }
+            }
+        }
+    }
+}
+
+/// Print status in table format
+fn print_status_table(worktrees: &[crate::worktree::status::WorktreeInfo], files_only: bool) {
+    print_detailed_status_table(worktrees, files_only);
+}
+
+/// Print status in compact format
+fn print_status_compact(worktrees: &[crate::worktree::status::WorktreeInfo], _files_only: bool) {
+    use colored::*;
+    
+    for worktree in worktrees {
+        let mut status_line = format!(
+            "{} {}: {}",
+            worktree.status.status_icon(),
+            worktree.branch,
+            worktree.status.status_description()
+        );
+        
+        // Add merge status if available
+        if let Some(merge_info) = &worktree.status.merge_info {
+            if merge_info.is_merged {
+                status_line.push_str(&format!(" [{}]", "merged".green()));
+            }
+        }
+        
+        println!("{}", status_line);
+    }
+}
+
+/// Print status in JSON format
+fn print_status_json(
+    worktrees: &[crate::worktree::status::WorktreeInfo],
+    _files_only: bool,
+) -> Result<()> {
+    let json = serde_json::to_string_pretty(worktrees)?;
+    println!("{}", json);
+    Ok(())
+}
+
+/// Format age duration for display
+fn format_age(age: std::time::Duration) -> String {
+    let hours = age.as_secs() / 3600;
+    let days = hours / 24;
+
+    if days > 0 {
+        format!("{}d", days)
+    } else if hours > 0 {
+        format!("{}h", hours)
+    } else {
+        format!("{}m", age.as_secs() / 60)
+    }
+}
+
+/// Print cleanup report
+fn print_cleanup_report(report: &crate::worktree::cleanup::CleanupReport) {
+    use colored::*;
+    
+    println!();
+    println!("{} Cleanup Report", "📊".blue());
+    println!("Strategy: {:?}", report.strategy_used);
+    if report.was_dry_run {
+        println!("Mode: {} (no changes made)", "Dry Run".yellow());
+    }
+    println!();
+    
+    println!("Results:");
+    println!("  ✅ Cleaned: {}", report.cleaned_count.to_string().green());
+    println!("  ⚠️  Skipped: {}", report.skipped_count.to_string().yellow());
+    println!("  ❌ Failed:  {}", report.failed_count.to_string().red());
+    println!("  📊 Total:   {}", report.total_evaluated);
+    
+    if !report.worktree_results.is_empty() {
+        println!();
+        println!("Details:");
+        
+        for result in &report.worktree_results {
+            let action_icon = match result.action {
+                crate::worktree::cleanup::CleanupAction::Cleaned => "✅",
+                crate::worktree::cleanup::CleanupAction::Skipped => "⚠️",
+                crate::worktree::cleanup::CleanupAction::Failed => "❌",
+                crate::worktree::cleanup::CleanupAction::MergedToFeature => "🔀",
+                crate::worktree::cleanup::CleanupAction::BackedUpToOrigin => "☁️",
+                crate::worktree::cleanup::CleanupAction::StashCreated => "📦",
+            };
+            
+            println!("  {} {} - {}", 
+                     action_icon, 
+                     result.branch.cyan(), 
+                     result.reason);
+            
+            if let Some(error) = &result.error {
+                println!("    Error: {}", error.red());
+            }
+        }
+    }
+    
+    println!();
+    if report.cleaned_count > 0 && !report.was_dry_run {
+        println!("{} Cleanup completed successfully!", "🎉".green());
+    } else if report.was_dry_run {
+        println!("{} Run without --dry-run to execute changes", "💡".blue());
+    }
+}
+
+/// Prompt user for confirmation
+fn prompt_for_confirmation(message: &str) -> Result<bool> {
+    use std::io::{self, Write};
+
+    print!("{} (y/N): ", message);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(input.trim().to_lowercase() == "y" || input.trim().to_lowercase() == "yes")
 }
 
 #[tokio::main]
@@ -831,6 +1585,10 @@ async fn main() -> Result<()> {
                 GitCommands::Reset { force } => {
                     workspace_manager.reset_repositories(force).await?;
                 }
+
+                GitCommands::Worktree { action } => {
+                    handle_worktree_command(action, &workspace_manager).await?;
+                }
             },
 
             Commands::Open {
@@ -1173,4 +1931,100 @@ fn print_getting_started_guide() {
     );
     display_println!("3. Configure your favorite apps");
     display_println!();
+}
+
+/// Handle worktree configuration subcommands
+async fn handle_worktree_config_command(
+    command: WorktreeConfigCommands,
+    workspace_manager: &WorkspaceManager,
+) -> Result<()> {
+    use crate::worktree::{WorktreeManager, WorktreeConfig};
+    use colored::*;
+
+    match command {
+        WorktreeConfigCommands::Show { repository, format } => {
+            let worktree_manager = if let Some(repo_name) = repository {
+                // Load repository-specific configuration
+                let repo_path = workspace_manager
+                    .get_repository(&repo_name)
+                    .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", repo_name))?
+                    .path
+                    .clone();
+                WorktreeManager::new_with_workspace_manager(workspace_manager, Some(repo_path)).await?
+            } else {
+                // Load global configuration
+                WorktreeManager::new_with_workspace_manager(workspace_manager, None).await?
+            };
+
+            match format.as_str() {
+                "yaml" => {
+                    let config = worktree_manager.get_config();
+                    let yaml = serde_yaml::to_string(config)?;
+                    println!("{}", yaml);
+                }
+                "json" => {
+                    let config = worktree_manager.get_config();
+                    let json = serde_json::to_string_pretty(config)?;
+                    println!("{}", json);
+                }
+                _ => {
+                    // Summary format (default)
+                    if let Ok(summary) = worktree_manager.get_config_summary().await {
+                        println!("{}", summary.format_summary());
+                    } else {
+                        // Fallback to basic config display
+                        let config = worktree_manager.get_config();
+                        println!("{}", "Worktree Configuration".cyan().bold());
+                        println!("Prefix: {}", config.prefix.yellow());
+                        println!("Base Directory: {}", config.base_dir.display().to_string().blue());
+                        println!("Auto GitIgnore: {}", if config.auto_gitignore { "✅" } else { "❌" });
+                        println!("Default Editor: {}", config.default_editor.green());
+                        println!("\nCleanup Configuration:");
+                        println!("  Age Threshold: {} hours", config.cleanup.age_threshold_hours);
+                        println!("  Verify Remote: {}", if config.cleanup.verify_remote { "✅" } else { "❌" });
+                        println!("  Auto Delete Branch: {}", if config.cleanup.auto_delete_branch { "✅" } else { "❌" });
+                        println!("\nMerge Detection:");
+                        println!("  Use GitHub CLI: {}", if config.merge_detection.use_github_cli { "✅" } else { "❌" });
+                        println!("  Methods: {}", config.merge_detection.methods.join(", "));
+                        println!("  Main Branches: {}", config.merge_detection.main_branches.join(", "));
+                    }
+                }
+            }
+        }
+        WorktreeConfigCommands::Set { key, value, repository: _ } => {
+            // For now, just display what would be set (actual implementation would need to parse keys)
+            println!("🔧 Configuration setting is not yet implemented");
+            println!("Would set: {} = {}", key.yellow(), value.blue());
+            println!("Use environment variables for now:");
+            println!("  export VIBE_WORKTREE_PREFIX=\"{}\"", value);
+            println!("  export VIBE_WORKTREE_BASE=\"{}\"", value);
+            println!("  etc.");
+        }
+        WorktreeConfigCommands::Reset { key: _, repository: _ } => {
+            println!("🔄 Configuration reset is not yet implemented");
+            println!("Use 'unset' on environment variables for now");
+        }
+        WorktreeConfigCommands::Validate => {
+            let worktree_manager = WorktreeManager::new_with_workspace_manager(workspace_manager, None).await?;
+            let errors = worktree_manager.validate_configuration().await?;
+            
+            if errors.is_empty() {
+                println!("{} Configuration is valid", "✅".green());
+            } else {
+                println!("{} Found {} configuration errors:", "❌".red(), errors.len());
+                for error in &errors {
+                    if let Some(repo) = &error.repository {
+                        println!("  [{}] {}", repo.yellow(), error.error);
+                    } else {
+                        println!("  [global] {}", error.error);
+                    }
+                }
+            }
+        }
+        WorktreeConfigCommands::Help => {
+            println!("{}", WorktreeConfig::get_help_text());
+        }
+    }
+
+    Ok(())
 }

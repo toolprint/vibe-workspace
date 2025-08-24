@@ -13,6 +13,10 @@ categories = ["command-line-utilities", "development-tools"]
 name = "vibe"
 path = "src/main.rs"
 
+[lib]
+name = "vibe_workspace"
+path = "src/lib.rs"
+
 [dependencies]
 # CLI framework and argument parsing
 clap = { version = "4.4", features = ["derive", "env"] }
@@ -79,6 +83,9 @@ schemars = "0.8"
 
 # Thread-safe initialization
 once_cell = "1.19"
+
+# Async utilities for batch processing
+futures-util = "0.3"
 
 # cargo-binstall support for binary distribution
 [package.metadata.binstall]

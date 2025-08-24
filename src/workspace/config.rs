@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
+use crate::worktree::config::{
+    WorktreeConfig, WorktreeCleanupConfig, WorktreeMergeDetectionConfig
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkspaceConfig {
     pub workspace: WorkspaceInfo,
@@ -14,6 +18,8 @@ pub struct WorkspaceConfig {
     pub preferences: Option<Preferences>,
     #[serde(default)]
     pub claude_agents: Option<ClaudeAgentsIntegration>,
+    #[serde(default)]
+    pub worktree: WorktreeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +36,60 @@ pub struct Repository {
     pub url: Option<String>,
     pub branch: Option<String>,
     pub apps: HashMap<String, AppConfig>,
+    #[serde(default)]
+    pub worktree_config: Option<RepositoryWorktreeConfig>,
+}
+
+/// Repository-specific worktree configuration overrides
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RepositoryWorktreeConfig {
+    /// Override global base directory for this repository
+    pub base_dir: Option<PathBuf>,
+    
+    /// Override global prefix for this repository
+    pub prefix: Option<String>,
+    
+    /// Repository-specific cleanup settings
+    pub cleanup: Option<WorktreeCleanupConfig>,
+    
+    /// Repository-specific merge detection settings
+    pub merge_detection: Option<WorktreeMergeDetectionConfig>,
+    
+    /// Disable worktree management for this repository
+    pub disabled: Option<bool>,
+}
+
+impl RepositoryWorktreeConfig {
+    /// Merge repository-specific config with global config
+    pub fn merge_with_global(&self, global: &WorktreeConfig) -> WorktreeConfig {
+        WorktreeConfig {
+            base_dir: self.base_dir.clone().unwrap_or_else(|| global.base_dir.clone()),
+            prefix: self.prefix.clone().unwrap_or_else(|| global.prefix.clone()),
+            auto_gitignore: global.auto_gitignore, // Always use global setting
+            default_editor: global.default_editor.clone(), // Always use global setting
+            cleanup: self.cleanup.clone().unwrap_or_else(|| global.cleanup.clone()),
+            merge_detection: self.merge_detection.clone()
+                .unwrap_or_else(|| global.merge_detection.clone()),
+            status: global.status.clone(), // Always use global status settings
+        }
+    }
+    
+    /// Check if worktree management is enabled for this repository
+    pub fn is_enabled(&self) -> bool {
+        !self.disabled.unwrap_or(false)
+    }
+}
+
+impl Default for RepositoryWorktreeConfig {
+    fn default() -> Self {
+        Self {
+            base_dir: None,
+            prefix: None,
+            cleanup: None,
+            merge_detection: None,
+            disabled: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +314,7 @@ impl Default for WorkspaceConfig {
                     .join(".claude")
                     .join("agents"),
             }),
+            worktree: WorktreeConfig::default(),
         }
     }
 }
@@ -472,6 +533,31 @@ impl WorkspaceConfig {
 
         Ok(())
     }
+    
+    /// Get effective worktree configuration for a specific repository
+    pub fn get_worktree_config_for_repo(&self, repo_name: &str) -> WorktreeConfig {
+        if let Some(repo) = self.repositories.iter().find(|r| r.name == repo_name) {
+            if let Some(repo_config) = &repo.worktree_config {
+                if repo_config.is_enabled() {
+                    return repo_config.merge_with_global(&self.worktree);
+                }
+            }
+        }
+        
+        // Return global config if no repository-specific overrides
+        self.worktree.clone()
+    }
+    
+    /// Check if worktree management is enabled for a repository
+    pub fn is_worktree_enabled_for_repo(&self, repo_name: &str) -> bool {
+        if let Some(repo) = self.repositories.iter().find(|r| r.name == repo_name) {
+            if let Some(repo_config) = &repo.worktree_config {
+                return repo_config.is_enabled();
+            }
+        }
+        
+        true // Enabled by default
+    }
 }
 
 impl Repository {
@@ -482,6 +568,7 @@ impl Repository {
             url: None,
             branch: None,
             apps: HashMap::new(),
+            worktree_config: None,
         }
     }
 
