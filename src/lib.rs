@@ -16,7 +16,4 @@ pub mod worktree;
 
 // Re-export commonly used types
 pub use workspace::{WorkspaceConfig, WorkspaceManager};
-pub use worktree::{
-    check_worktree_status, check_worktree_status_with_config, detect_worktree_merge_status,
-    MergeInfo, WorktreeConfig, WorktreeInfo, WorktreeManager, WorktreeStatus,
-};
+pub use worktree::{WorktreeConfig, WorktreeManager};

@@ -137,7 +137,7 @@ impl Default for WorktreeStatusCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::worktree::{StatusSeverity, WorktreeStatus};
+    use crate::worktree::status::{StatusSeverity, WorktreeStatus};
     use std::time::Duration;
     use tempfile::TempDir;
 
@@ -146,6 +146,7 @@ mod tests {
             path,
             branch: "test-branch".to_string(),
             head: "abc1234".to_string(),
+            task_id: None,
             status: WorktreeStatus {
                 is_clean: true,
                 severity: StatusSeverity::Clean,

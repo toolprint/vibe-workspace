@@ -303,7 +303,7 @@ impl RepositoryWorktreeSummary {
             let clean_ratio = clean as f32 / total as f32;
             let remote_ratio = with_remote as f32 / total as f32;
             // Weight cleanliness more heavily than remote tracking
-            (clean_ratio * 0.7 + remote_ratio * 0.3)
+            clean_ratio * 0.7 + remote_ratio * 0.3
         };
 
         Self {
@@ -1136,7 +1136,7 @@ mod tests {
 
         // Check for activity in the distant past (should be false)
         // Note: This might be flaky depending on system clock
-        let has_old_activity = check_worktree_activity(&path, 0).await?;
+        let _has_old_activity = check_worktree_activity(&path, 0).await?;
         // We can't reliably test this because it depends on timing
 
         Ok(())

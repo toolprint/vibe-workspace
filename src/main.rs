@@ -793,7 +793,7 @@ async fn handle_worktree_command(
 
                 WorktreeCommands::Status {
                     branch,
-                    all,
+                    all: _,
                     format,
                     files_only,
                 } => {

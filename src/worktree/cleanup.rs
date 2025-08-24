@@ -841,6 +841,7 @@ impl WorktreeCleanup {
 
 #[derive(Debug)]
 struct MergeResult {
+    #[allow(dead_code)]
     success: bool,
     has_conflicts: bool,
     conflict_summary: String,

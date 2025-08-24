@@ -71,6 +71,7 @@ pub async fn discover_git_repositories<P: AsRef<Path>>(
 }
 
 /// Check if a path is a git repository
+#[allow(dead_code)]
 pub fn is_git_repository<P: AsRef<Path>>(path: P) -> bool {
     let git_dir = path.as_ref().join(".git");
     git_dir.exists()

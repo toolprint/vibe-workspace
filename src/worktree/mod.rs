@@ -13,25 +13,11 @@ pub mod merge_detection;
 pub mod operations;
 pub mod status;
 
-// Re-export core types
-pub use cache::{CacheStats, WorktreeStatusCache};
-pub use cleanup::{CleanupOptions, CleanupReport, CleanupStrategy};
+// Re-export core types for external use via lib.rs public API and internal module usage
+pub use cleanup::{CleanupOptions, CleanupStrategy};
 pub use config::WorktreeConfig;
-pub use config_manager::{ConfigSummary, ConfigValidationError, WorktreeConfigManager};
 pub use manager::WorktreeManager;
-pub use merge_detection::{
-    detect_worktree_merge_status, MergeDetectionMethod, MergeDetectionResult, MergeDetector,
-    MethodResult,
-};
-pub use operations::{
-    sanitize_branch_name, validate_branch_name, CreateOptions, RemoveOptions, WorktreeOperation,
-    WorktreeOperations,
-};
-pub use status::{
-    batch_update_worktree_status, check_worktree_activity, check_worktree_status,
-    check_worktree_status_with_config, get_branch_info, get_worktree_diff, update_worktree_info,
-    BranchInfo, CommitInfo, MergeInfo, StatusSeverity, WorktreeInfo, WorktreeStatus,
-};
+pub use operations::{CreateOptions, RemoveOptions};
 
 use anyhow::Result;
 use std::path::PathBuf;
@@ -85,12 +71,14 @@ mod tests {
 
     #[test]
     fn test_status_priority() {
+        use crate::worktree::status::StatusSeverity;
         assert!(StatusSeverity::Warning.priority() < StatusSeverity::LightWarning.priority());
         assert!(StatusSeverity::LightWarning.priority() < StatusSeverity::Clean.priority());
     }
 
     #[test]
     fn test_status_description() {
+        use crate::worktree::status::WorktreeStatus;
         let mut status = WorktreeStatus::new();
         status.uncommitted_changes.push("file1.rs".to_string());
         status.untracked_files.push("file2.rs".to_string());
@@ -102,6 +90,7 @@ mod tests {
 
     #[test]
     fn test_status_icon() {
+        use crate::worktree::status::{StatusSeverity, WorktreeStatus};
         let mut status = WorktreeStatus::new();
         status.severity = StatusSeverity::Clean;
         assert_eq!(status.status_icon(), "✅");
@@ -115,6 +104,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_safe_detection() {
+        use crate::worktree::status::{CommitInfo, MergeInfo, WorktreeStatus};
         let mut status = WorktreeStatus::new();
         assert!(!status.is_safe_to_cleanup());
 
@@ -178,6 +168,7 @@ mod tests {
 
     #[test]
     fn test_cleanup_defaults() {
+        use crate::worktree::cleanup::{CleanupReport, CleanupStrategy};
         let cleanup_options = CleanupOptions::default();
         assert!(!cleanup_options.dry_run);
         assert_eq!(cleanup_options.min_age_hours, Some(24));

@@ -37,11 +37,6 @@ pub fn init_with_verbosity(mode: OutputMode, verbose: bool) {
         .expect("Output system already initialized");
 }
 
-/// Get the current output configuration
-pub(crate) fn config() -> &'static RwLock<OutputConfig> {
-    OUTPUT_CONFIG.get().expect("Output system not initialized")
-}
-
 /// Check if output system is initialized
 pub fn is_initialized() -> bool {
     OUTPUT_CONFIG.get().is_some()
