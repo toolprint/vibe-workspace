@@ -3,11 +3,13 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
+use crate::workspace::WorkspaceManager;
 use crate::worktree::config::WorktreeConfig;
-use crate::worktree::config_manager::{WorktreeConfigManager, ConfigSummary, ConfigValidationError};
+use crate::worktree::config_manager::{
+    ConfigSummary, ConfigValidationError, WorktreeConfigManager,
+};
 use crate::worktree::operations::{CreateOptions, RemoveOptions, WorktreeOperations};
 use crate::worktree::status::WorktreeInfo;
-use crate::workspace::WorkspaceManager;
 
 /// Main coordinator for all worktree operations
 pub struct WorktreeManager {
@@ -20,10 +22,9 @@ pub struct WorktreeManager {
 impl WorktreeManager {
     /// Create a new WorktreeManager
     pub async fn new(workspace_root: PathBuf, config: Option<WorktreeConfig>) -> Result<Self> {
-        let config = config.unwrap_or_else(|| {
-            WorktreeConfig::load_with_overrides().unwrap_or_default()
-        });
-        
+        let config =
+            config.unwrap_or_else(|| WorktreeConfig::load_with_overrides().unwrap_or_default());
+
         config
             .validate()
             .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
@@ -53,19 +54,19 @@ impl WorktreeManager {
         workspace_manager: &WorkspaceManager,
         repo_path: Option<PathBuf>,
     ) -> Result<Self> {
-        let config_manager = WorktreeConfigManager::new(
-            workspace_manager.get_config_path().clone()
-        );
-        
+        let config_manager =
+            WorktreeConfigManager::new(workspace_manager.get_config_path().clone());
+
         // Migrate legacy configuration if needed
         config_manager.migrate_legacy_config().await?;
-        
+
         // Extract repository name if repo_path is provided
-        let repo_name = repo_path.as_ref()
+        let repo_name = repo_path
+            .as_ref()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
-        
+
         // Load configuration for specific repository or use global
         let config = if let Some(ref path) = repo_path {
             config_manager.load_config_for_repo(path).await?
@@ -73,25 +74,19 @@ impl WorktreeManager {
             WorktreeConfig::load_with_overrides()
                 .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?
         };
-        
+
         // Use the appropriate repo root (repo_path if provided, otherwise workspace root)
-        let repo_root = repo_path.as_ref()
+        let repo_root = repo_path
+            .as_ref()
             .unwrap_or(workspace_manager.get_workspace_root())
             .clone();
-        
+
         let operations = if let Some(name) = repo_name {
-            WorktreeOperations::new_with_repo_name(
-                repo_root.clone(),
-                config.clone(),
-                name
-            )
+            WorktreeOperations::new_with_repo_name(repo_root.clone(), config.clone(), name)
         } else {
-            WorktreeOperations::new(
-                repo_root.clone(),
-                config.clone()
-            )
+            WorktreeOperations::new(repo_root.clone(), config.clone())
         };
-        
+
         Ok(Self {
             operations,
             workspace_root: repo_root,
@@ -160,7 +155,7 @@ impl WorktreeManager {
     pub fn get_operations(&self) -> WorktreeOperations {
         self.operations.clone()
     }
-    
+
     /// Get configuration summary for diagnostics
     pub async fn get_config_summary(&self) -> Result<ConfigSummary> {
         if let Some(config_manager) = &self.config_manager {
@@ -169,7 +164,7 @@ impl WorktreeManager {
             Err(anyhow::anyhow!("Config manager not available"))
         }
     }
-    
+
     /// Validate current configuration
     pub async fn validate_configuration(&self) -> Result<Vec<ConfigValidationError>> {
         if let Some(config_manager) = &self.config_manager {

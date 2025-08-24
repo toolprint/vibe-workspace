@@ -36,8 +36,8 @@ pub use validation::ValidateMcpInterfaceTool;
 
 // Worktree handlers
 pub use worktree::{
-    CreateWorktreeTool, ListWorktreesTool, AnalyzeConflictsTool, 
-    RecommendCleanupTool, ExecuteCleanupTool
+    AnalyzeConflictsTool, CreateWorktreeTool, ExecuteCleanupTool, ListWorktreesTool,
+    RecommendCleanupTool,
 };
 
 // Worktree help handler

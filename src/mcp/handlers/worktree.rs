@@ -1,5 +1,5 @@
 //! MCP tool handlers for worktree management
-//! 
+//!
 //! This module provides Model Context Protocol tools that allow AI systems
 //! to manage git worktrees, analyze branch status, and assist with cleanup decisions.
 
@@ -14,9 +14,8 @@ use tracing::{debug, warn};
 use crate::mcp::types::VibeToolHandler;
 use crate::workspace::WorkspaceManager;
 use crate::worktree::{
-    WorktreeManager, CreateOptions, CleanupOptions, CleanupStrategy,
-    status::StatusSeverity,
-    cleanup::WorktreeCleanup,
+    cleanup::WorktreeCleanup, status::StatusSeverity, CleanupOptions, CleanupStrategy,
+    CreateOptions, WorktreeManager,
 };
 
 /// MCP tool for creating new worktrees
@@ -67,44 +66,43 @@ impl VibeToolHandler for CreateWorktreeTool {
         let task_id = args["task_id"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("task_id is required"))?;
-        
+
         let base_branch = args["base_branch"].as_str().map(|s| s.to_string());
         let force = args["force"].as_bool().unwrap_or(false);
         let custom_path = args["custom_path"].as_str().map(PathBuf::from);
-        
+
         // Get current directory to determine repository
         let current_dir = std::env::current_dir()?;
-        
+
         // Create worktree manager
         let workspace_guard = workspace.lock().await;
         let worktree_manager = WorktreeManager::new_with_workspace_manager(
             &workspace_guard,
-            Some(current_dir.clone())
-        ).await?;
+            Some(current_dir.clone()),
+        )
+        .await?;
         drop(workspace_guard);
-        
+
         let options = CreateOptions {
             task_id: task_id.to_string(),
             base_branch,
             force,
             custom_path,
         };
-        
+
         debug!("Creating worktree for task: {}", task_id);
-        
+
         match worktree_manager.create_worktree_with_options(options).await {
-            Ok(worktree_info) => {
-                Ok(json!({
-                    "success": true,
-                    "worktree": {
-                        "path": worktree_info.path,
-                        "branch": worktree_info.branch,
-                        "head": worktree_info.head,
-                        "age_seconds": worktree_info.age.as_secs()
-                    },
-                    "message": format!("Created worktree for task '{}' at {}", task_id, worktree_info.path.display())
-                }))
-            }
+            Ok(worktree_info) => Ok(json!({
+                "success": true,
+                "worktree": {
+                    "path": worktree_info.path,
+                    "branch": worktree_info.branch,
+                    "head": worktree_info.head,
+                    "age_seconds": worktree_info.age.as_secs()
+                },
+                "message": format!("Created worktree for task '{}' at {}", task_id, worktree_info.path.display())
+            })),
             Err(e) => {
                 warn!("Failed to create worktree for task '{}': {}", task_id, e);
                 Ok(json!({
@@ -161,32 +159,37 @@ impl VibeToolHandler for ListWorktreesTool {
         let include_status = args["include_status"].as_bool().unwrap_or(true);
         let prefix_filter = args["prefix_filter"].as_str();
         let severity_filter = args["severity_filter"].as_str();
-        
+
         let current_dir = std::env::current_dir()?;
-        
+
         let workspace_guard = workspace.lock().await;
         let worktree_manager = WorktreeManager::new_with_workspace_manager(
             &workspace_guard,
-            Some(current_dir.clone())
-        ).await?;
+            Some(current_dir.clone()),
+        )
+        .await?;
         drop(workspace_guard);
-        
+
         let mut worktrees = worktree_manager.list_worktrees().await?;
-        
+
         // Update status if requested
         if include_status {
             for worktree in &mut worktrees {
                 if let Err(e) = worktree.update_status().await {
-                    warn!("Failed to update status for worktree {}: {}", worktree.path.display(), e);
+                    warn!(
+                        "Failed to update status for worktree {}: {}",
+                        worktree.path.display(),
+                        e
+                    );
                 }
             }
         }
-        
+
         // Apply filters
         if let Some(prefix) = prefix_filter {
             worktrees.retain(|w| w.branch.starts_with(prefix));
         }
-        
+
         if let Some(severity) = severity_filter {
             let target_severity = match severity {
                 "clean" => StatusSeverity::Clean,
@@ -196,44 +199,47 @@ impl VibeToolHandler for ListWorktreesTool {
             };
             worktrees.retain(|w| w.status.severity == target_severity);
         }
-        
+
         // Convert to AI-friendly format
-        let worktree_data: Vec<Value> = worktrees.into_iter().map(|w| {
-            json!({
-                "path": w.path,
-                "branch": w.branch,
-                "head": w.head,
-                "is_detached": w.is_detached,
-                "age_hours": w.age.as_secs() / 3600,
-                "status": {
-                    "is_clean": w.status.is_clean,
-                    "severity": match w.status.severity {
-                        StatusSeverity::Clean => "clean",
-                        StatusSeverity::LightWarning => "light_warning",
-                        StatusSeverity::Warning => "warning",
+        let worktree_data: Vec<Value> = worktrees
+            .into_iter()
+            .map(|w| {
+                json!({
+                    "path": w.path,
+                    "branch": w.branch,
+                    "head": w.head,
+                    "is_detached": w.is_detached,
+                    "age_hours": w.age.as_secs() / 3600,
+                    "status": {
+                        "is_clean": w.status.is_clean,
+                        "severity": match w.status.severity {
+                            StatusSeverity::Clean => "clean",
+                            StatusSeverity::LightWarning => "light_warning",
+                            StatusSeverity::Warning => "warning",
+                        },
+                        "description": w.status.status_description(),
+                        "uncommitted_changes_count": w.status.uncommitted_changes.len(),
+                        "untracked_files_count": w.status.untracked_files.len(),
+                        "unpushed_commits_count": w.status.unpushed_commits.len(),
+                        "ahead_count": w.status.ahead_count,
+                        "behind_count": w.status.behind_count,
+                        "is_safe_to_cleanup": w.status.is_safe_to_cleanup(),
+                        "merge_info": w.status.merge_info.as_ref().map(|info| json!({
+                            "is_merged": info.is_merged,
+                            "detection_method": info.detection_method,
+                            "confidence": info.confidence,
+                            "details": info.details
+                        }))
                     },
-                    "description": w.status.status_description(),
-                    "uncommitted_changes_count": w.status.uncommitted_changes.len(),
-                    "untracked_files_count": w.status.untracked_files.len(),
-                    "unpushed_commits_count": w.status.unpushed_commits.len(),
-                    "ahead_count": w.status.ahead_count,
-                    "behind_count": w.status.behind_count,
-                    "is_safe_to_cleanup": w.status.is_safe_to_cleanup(),
-                    "merge_info": w.status.merge_info.as_ref().map(|info| json!({
-                        "is_merged": info.is_merged,
-                        "detection_method": info.detection_method,
-                        "confidence": info.confidence,
-                        "details": info.details
-                    }))
-                },
-                "files": if include_status && !w.status.uncommitted_changes.is_empty() {
-                    Some(w.status.uncommitted_changes)
-                } else {
-                    None
-                }
+                    "files": if include_status && !w.status.uncommitted_changes.is_empty() {
+                        Some(w.status.uncommitted_changes)
+                    } else {
+                        None
+                    }
+                })
             })
-        }).collect();
-        
+            .collect();
+
         Ok(json!({
             "worktrees": worktree_data,
             "total_count": worktree_data.len(),
@@ -291,34 +297,40 @@ impl VibeToolHandler for AnalyzeConflictsTool {
         let branch_name = args["branch_name"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("branch_name is required"))?;
-        
+
         let target_branch = args["target_branch"].as_str().unwrap_or("main");
         let include_diff = args["include_diff"].as_bool().unwrap_or(true);
-        
+
         let current_dir = std::env::current_dir()?;
-        
+
         let workspace_guard = workspace.lock().await;
         let worktree_manager = WorktreeManager::new_with_workspace_manager(
             &workspace_guard,
-            Some(current_dir.clone())
-        ).await?;
+            Some(current_dir.clone()),
+        )
+        .await?;
         drop(workspace_guard);
-        
+
         // Find the worktree
         let worktrees = worktree_manager.list_worktrees().await?;
         let target_worktree = worktrees
             .iter()
-            .find(|w| w.branch == branch_name || w.path.file_name().unwrap_or_default().to_string_lossy() == branch_name)
+            .find(|w| {
+                w.branch == branch_name
+                    || w.path.file_name().unwrap_or_default().to_string_lossy() == branch_name
+            })
             .ok_or_else(|| anyhow::anyhow!("Worktree not found: {}", branch_name))?;
-        
+
         // Get conflict information
-        let conflict_analysis = self.analyze_potential_conflicts(
-            &target_worktree.path,
-            &target_worktree.branch,
-            target_branch,
-            include_diff
-        ).await?;
-        
+        let conflict_analysis = self
+            .analyze_potential_conflicts(
+                &target_worktree.path,
+                &target_worktree.branch,
+                target_branch,
+                include_diff,
+            )
+            .await?;
+
         Ok(json!({
             "worktree": {
                 "path": target_worktree.path,
@@ -339,14 +351,14 @@ impl AnalyzeConflictsTool {
         include_diff: bool,
     ) -> Result<Value> {
         use tokio::process::Command;
-        
+
         // Check if merge would have conflicts
         let merge_base_output = Command::new("git")
             .args(&["merge-base", target_branch, source_branch])
             .current_dir(worktree_path)
             .output()
             .await?;
-        
+
         if !merge_base_output.status.success() {
             return Ok(json!({
                 "has_conflicts": false,
@@ -354,35 +366,40 @@ impl AnalyzeConflictsTool {
                 "suggestion": "Branches may not share common history"
             }));
         }
-        
-        let merge_base = String::from_utf8_lossy(&merge_base_output.stdout).trim().to_string();
-        
+
+        let merge_base = String::from_utf8_lossy(&merge_base_output.stdout)
+            .trim()
+            .to_string();
+
         // Simulate merge to detect conflicts
         let merge_tree_output = Command::new("git")
             .args(&["merge-tree", &merge_base, target_branch, source_branch])
             .current_dir(worktree_path)
             .output()
             .await?;
-        
+
         let merge_tree_result = String::from_utf8_lossy(&merge_tree_output.stdout);
         let has_conflicts = merge_tree_result.contains("<<<<<<< ");
-        
+
         let mut analysis = json!({
             "has_conflicts": has_conflicts,
             "merge_base": merge_base,
         });
-        
+
         if has_conflicts {
             // Parse conflict information
             let conflicted_files = self.parse_conflicted_files(&merge_tree_result);
             analysis["conflicted_files"] = json!(conflicted_files);
             analysis["conflict_count"] = json!(conflicted_files.len());
-            
+
             if include_diff {
                 // Get detailed diff for each conflicted file
                 let mut file_details = Vec::new();
                 for file in &conflicted_files {
-                    if let Ok(diff) = self.get_file_diff(worktree_path, file, target_branch, source_branch).await {
+                    if let Ok(diff) = self
+                        .get_file_diff(worktree_path, file, target_branch, source_branch)
+                        .await
+                    {
                         file_details.push(json!({
                             "file": file,
                             "diff_summary": diff
@@ -391,7 +408,7 @@ impl AnalyzeConflictsTool {
                 }
                 analysis["file_details"] = json!(file_details);
             }
-            
+
             analysis["resolution_suggestions"] = json!([
                 "Review each conflicted file manually",
                 "Consider rebasing the feature branch to reduce conflicts",
@@ -402,15 +419,15 @@ impl AnalyzeConflictsTool {
             analysis["message"] = json!("No merge conflicts detected");
             analysis["suggestion"] = json!("Safe to merge automatically");
         }
-        
+
         Ok(analysis)
     }
-    
+
     fn parse_conflicted_files(&self, merge_tree_output: &str) -> Vec<String> {
         // Simple parsing of merge-tree output to find conflicted files
         let mut files = Vec::new();
         let mut current_file = None;
-        
+
         for line in merge_tree_output.lines() {
             if line.starts_with("@@@") {
                 // New file section
@@ -425,10 +442,10 @@ impl AnalyzeConflictsTool {
                 }
             }
         }
-        
+
         files
     }
-    
+
     async fn get_file_diff(
         &self,
         worktree_path: &std::path::Path,
@@ -437,19 +454,33 @@ impl AnalyzeConflictsTool {
         source_branch: &str,
     ) -> Result<String> {
         use tokio::process::Command;
-        
+
         let output = Command::new("git")
-            .args(&["diff", "--no-index", &format!("{}:{}", target_branch, file_path), &format!("{}:{}", source_branch, file_path)])
+            .args(&[
+                "diff",
+                "--no-index",
+                &format!("{}:{}", target_branch, file_path),
+                &format!("{}:{}", source_branch, file_path),
+            ])
             .current_dir(worktree_path)
             .output()
             .await?;
-        
+
         // Summarize the diff
         let diff_lines = String::from_utf8_lossy(&output.stdout);
-        let added_lines = diff_lines.lines().filter(|line| line.starts_with('+')).count();
-        let removed_lines = diff_lines.lines().filter(|line| line.starts_with('-')).count();
-        
-        Ok(format!("Lines added: {}, Lines removed: {}", added_lines, removed_lines))
+        let added_lines = diff_lines
+            .lines()
+            .filter(|line| line.starts_with('+'))
+            .count();
+        let removed_lines = diff_lines
+            .lines()
+            .filter(|line| line.starts_with('-'))
+            .count();
+
+        Ok(format!(
+            "Lines added: {}, Lines removed: {}",
+            added_lines, removed_lines
+        ))
     }
 }
 
@@ -498,50 +529,57 @@ impl VibeToolHandler for RecommendCleanupTool {
         let min_age_days = args["min_age_days"].as_f64().unwrap_or(1.0);
         let require_merged = args["require_merged"].as_bool().unwrap_or(true);
         let min_confidence = args["min_confidence"].as_f64().unwrap_or(0.7) as f32;
-        
+
         let current_dir = std::env::current_dir()?;
-        
+
         let workspace_guard = workspace.lock().await;
         let worktree_manager = WorktreeManager::new_with_workspace_manager(
             &workspace_guard,
-            Some(current_dir.clone())
-        ).await?;
+            Some(current_dir.clone()),
+        )
+        .await?;
         drop(workspace_guard);
-        
+
         // Get all worktrees with status
         let mut worktrees = worktree_manager.list_worktrees().await?;
-        
+
         // Update status for analysis
         for worktree in &mut worktrees {
             if let Err(e) = worktree.update_status().await {
-                warn!("Failed to update status for worktree {}: {}", worktree.path.display(), e);
+                warn!(
+                    "Failed to update status for worktree {}: {}",
+                    worktree.path.display(),
+                    e
+                );
             }
         }
-        
+
         // Analyze each worktree
         let mut recommendations = Vec::new();
         let min_age = std::time::Duration::from_secs((min_age_days * 24.0 * 3600.0) as u64);
-        
+
         for worktree in &worktrees {
             let recommendation = self.analyze_worktree_for_cleanup(
                 worktree,
                 min_age,
                 require_merged,
-                min_confidence
+                min_confidence,
             );
-            
+
             if recommendation["action"] != "keep" {
                 recommendations.push(recommendation);
             }
         }
-        
+
         // Sort by safety score (safest first)
         recommendations.sort_by(|a, b| {
             let safety_a = a["safety_score"].as_f64().unwrap_or(0.0);
             let safety_b = b["safety_score"].as_f64().unwrap_or(0.0);
-            safety_b.partial_cmp(&safety_a).unwrap_or(std::cmp::Ordering::Equal)
+            safety_b
+                .partial_cmp(&safety_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
-        
+
         Ok(json!({
             "recommendations": recommendations,
             "summary": {
@@ -570,7 +608,7 @@ impl RecommendCleanupTool {
         let mut safety_score = 1.0;
         let mut reasons = Vec::new();
         let mut warnings = Vec::new();
-        
+
         // Age check
         if worktree.age < min_age {
             return json!({
@@ -581,13 +619,15 @@ impl RecommendCleanupTool {
                 "safety_score": 0.0
             });
         }
-        
+
         // Check if it's merged
-        let is_merged = worktree.status.merge_info
+        let is_merged = worktree
+            .status
+            .merge_info
             .as_ref()
             .map(|info| info.is_merged && info.confidence >= min_confidence)
             .unwrap_or(false);
-        
+
         if require_merged && !is_merged {
             return json!({
                 "worktree": worktree.branch,
@@ -598,23 +638,32 @@ impl RecommendCleanupTool {
                 "merge_info": worktree.status.merge_info
             });
         }
-        
+
         // Safety analysis
         if !worktree.status.uncommitted_changes.is_empty() {
             safety_score -= 0.3;
-            warnings.push(format!("{} uncommitted changes", worktree.status.uncommitted_changes.len()));
+            warnings.push(format!(
+                "{} uncommitted changes",
+                worktree.status.uncommitted_changes.len()
+            ));
         }
-        
+
         if !worktree.status.untracked_files.is_empty() {
             safety_score -= 0.2;
-            warnings.push(format!("{} untracked files", worktree.status.untracked_files.len()));
+            warnings.push(format!(
+                "{} untracked files",
+                worktree.status.untracked_files.len()
+            ));
         }
-        
+
         if !worktree.status.unpushed_commits.is_empty() && !is_merged {
             safety_score -= 0.4;
-            warnings.push(format!("{} unpushed commits", worktree.status.unpushed_commits.len()));
+            warnings.push(format!(
+                "{} unpushed commits",
+                worktree.status.unpushed_commits.len()
+            ));
         }
-        
+
         // Determine action
         let action = if safety_score > 0.8 && is_merged {
             "safe_cleanup"
@@ -623,16 +672,24 @@ impl RecommendCleanupTool {
         } else {
             "keep"
         };
-        
+
         if is_merged {
-            reasons.push(format!("Merged via {}", 
-                worktree.status.merge_info.as_ref()
+            reasons.push(format!(
+                "Merged via {}",
+                worktree
+                    .status
+                    .merge_info
+                    .as_ref()
                     .map(|info| info.detection_method.as_str())
-                    .unwrap_or("unknown")));
+                    .unwrap_or("unknown")
+            ));
         }
-        
-        reasons.push(format!("Age: {:.1} days", worktree.age.as_secs_f64() / 86400.0));
-        
+
+        reasons.push(format!(
+            "Age: {:.1} days",
+            worktree.age.as_secs_f64() / 86400.0
+        ));
+
         json!({
             "worktree": worktree.branch,
             "path": worktree.path,
@@ -706,12 +763,16 @@ impl VibeToolHandler for ExecuteCleanupTool {
         let strategy_str = args["strategy"].as_str().unwrap_or("discard");
         let _targets: Vec<String> = args["targets"]
             .as_array()
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
             .unwrap_or_default();
         let dry_run = args["dry_run"].as_bool().unwrap_or(true);
         let force = args["force"].as_bool().unwrap_or(false);
         let min_confidence = args["min_merge_confidence"].as_f64().unwrap_or(0.7) as f32;
-        
+
         let strategy = match strategy_str {
             "discard" => CleanupStrategy::Discard,
             "merge_to_feature" => CleanupStrategy::MergeToFeature,
@@ -719,16 +780,17 @@ impl VibeToolHandler for ExecuteCleanupTool {
             "stash_and_discard" => CleanupStrategy::StashAndDiscard,
             _ => return Err(anyhow::anyhow!("Invalid cleanup strategy")),
         };
-        
+
         let current_dir = std::env::current_dir()?;
-        
+
         let workspace_guard = workspace.lock().await;
         let worktree_manager = WorktreeManager::new_with_workspace_manager(
             &workspace_guard,
-            Some(current_dir.clone())
-        ).await?;
+            Some(current_dir.clone()),
+        )
+        .await?;
         drop(workspace_guard);
-        
+
         let cleanup_options = CleanupOptions {
             strategy,
             min_age_hours: Some(1), // Minimum 1 hour for AI operations
@@ -739,14 +801,14 @@ impl VibeToolHandler for ExecuteCleanupTool {
             merged_only: true,
             min_merge_confidence: min_confidence,
         };
-        
+
         let cleanup = WorktreeCleanup::new(
             worktree_manager.get_config().clone(),
-            worktree_manager.get_operations()
+            worktree_manager.get_operations(),
         );
-        
+
         let report = cleanup.cleanup_worktrees(cleanup_options).await?;
-        
+
         Ok(json!({
             "report": {
                 "total_evaluated": report.total_evaluated,
@@ -777,52 +839,52 @@ impl VibeToolHandler for ExecuteCleanupTool {
 mod tests {
     use super::*;
     use serde_json::json;
-    
+
     #[tokio::test]
     async fn test_create_worktree_tool() {
         let tool = CreateWorktreeTool;
         assert_eq!(tool.tool_name(), "create_worktree");
-        
+
         let schema = tool.input_schema();
         assert!(schema["properties"]["task_id"].is_object());
         assert_eq!(schema["required"], json!(["task_id"]));
     }
-    
+
     #[tokio::test]
     async fn test_list_worktrees_tool() {
         let tool = ListWorktreesTool;
         assert_eq!(tool.tool_name(), "list_worktrees");
-        
+
         let schema = tool.input_schema();
         assert!(schema["properties"]["include_status"].is_object());
         assert!(schema["properties"]["prefix_filter"].is_object());
     }
-    
+
     #[tokio::test]
     async fn test_analyze_conflicts_tool() {
         let tool = AnalyzeConflictsTool;
         assert_eq!(tool.tool_name(), "analyze_worktree_conflicts");
-        
+
         let schema = tool.input_schema();
         assert_eq!(schema["required"], json!(["branch_name"]));
     }
-    
+
     #[tokio::test]
     async fn test_recommend_cleanup_tool() {
         let tool = RecommendCleanupTool;
         assert_eq!(tool.tool_name(), "recommend_worktree_cleanup");
-        
+
         let schema = tool.input_schema();
         assert!(schema["properties"]["min_age_days"].is_object());
         assert!(schema["properties"]["require_merged"].is_object());
         assert!(schema["properties"]["min_confidence"].is_object());
     }
-    
+
     #[tokio::test]
     async fn test_execute_cleanup_tool() {
         let tool = ExecuteCleanupTool;
         assert_eq!(tool.tool_name(), "execute_worktree_cleanup");
-        
+
         let schema = tool.input_schema();
         assert!(schema["properties"]["strategy"].is_object());
         assert!(schema["properties"]["dry_run"].is_object());

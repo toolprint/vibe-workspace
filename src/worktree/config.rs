@@ -166,7 +166,9 @@ impl WorktreeConfig {
                 } else {
                     // Resolve to global location (matching operations.rs logic)
                     if let Some(home) = dirs::home_dir() {
-                        home.join(".toolprint").join("vibe-workspace").join("worktrees")
+                        home.join(".toolprint")
+                            .join("vibe-workspace")
+                            .join("worktrees")
                     } else {
                         std::env::temp_dir().join("vibe-worktrees")
                     }
@@ -205,57 +207,61 @@ impl WorktreeConfig {
     /// Load configuration with environment variable overrides and validation
     pub fn load_with_overrides() -> Result<Self, String> {
         let mut config = Self::from_env();
-        
+
         // Apply additional environment overrides
         if let Ok(auto_gitignore) = std::env::var("VIBE_WORKTREE_AUTO_GITIGNORE") {
             config.auto_gitignore = auto_gitignore.parse().unwrap_or(config.auto_gitignore);
         }
-        
+
         // Override cleanup settings
         if let Ok(age_threshold) = std::env::var("VIBE_WORKTREE_AGE_THRESHOLD") {
             if let Ok(hours) = age_threshold.parse::<u64>() {
                 config.cleanup.age_threshold_hours = hours;
             }
         }
-        
+
         if let Ok(verify_remote) = std::env::var("VIBE_WORKTREE_VERIFY_REMOTE") {
-            config.cleanup.verify_remote = verify_remote.parse().unwrap_or(config.cleanup.verify_remote);
+            config.cleanup.verify_remote = verify_remote
+                .parse()
+                .unwrap_or(config.cleanup.verify_remote);
         }
-        
+
         if let Ok(auto_delete) = std::env::var("VIBE_WORKTREE_AUTO_DELETE_BRANCH") {
-            config.cleanup.auto_delete_branch = auto_delete.parse().unwrap_or(config.cleanup.auto_delete_branch);
+            config.cleanup.auto_delete_branch = auto_delete
+                .parse()
+                .unwrap_or(config.cleanup.auto_delete_branch);
         }
-        
+
         // Override merge detection settings
         if let Ok(use_github) = std::env::var("VIBE_WORKTREE_USE_GITHUB_CLI") {
-            config.merge_detection.use_github_cli = use_github.parse().unwrap_or(config.merge_detection.use_github_cli);
+            config.merge_detection.use_github_cli = use_github
+                .parse()
+                .unwrap_or(config.merge_detection.use_github_cli);
         }
-        
+
         if let Ok(methods) = std::env::var("VIBE_WORKTREE_MERGE_METHODS") {
-            config.merge_detection.methods = methods
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect();
+            config.merge_detection.methods =
+                methods.split(',').map(|s| s.trim().to_string()).collect();
         }
-        
+
         if let Ok(main_branches) = std::env::var("VIBE_WORKTREE_MAIN_BRANCHES") {
             config.merge_detection.main_branches = main_branches
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .collect();
         }
-        
+
         // Override status settings
         if let Ok(show_files) = std::env::var("VIBE_WORKTREE_SHOW_FILES") {
             config.status.show_files = show_files.parse().unwrap_or(config.status.show_files);
         }
-        
+
         if let Ok(max_files) = std::env::var("VIBE_WORKTREE_MAX_FILES_SHOWN") {
             if let Ok(count) = max_files.parse::<usize>() {
                 config.status.max_files_shown = count;
             }
         }
-        
+
         // Validate the final configuration
         config.validate()?;
         Ok(config)
@@ -267,57 +273,57 @@ impl WorktreeConfig {
         if self.prefix.is_empty() {
             return Err("Worktree prefix cannot be empty".to_string());
         }
-        
+
         if self.base_dir.to_string_lossy().is_empty() {
             return Err("Base directory cannot be empty".to_string());
         }
-        
+
         if self.cleanup.age_threshold_hours == 0 {
             return Err("Age threshold must be greater than 0".to_string());
         }
-        
+
         // Advanced validation
         if self.prefix.contains("..") || self.prefix.contains('\0') {
             return Err("Worktree prefix contains invalid characters".to_string());
         }
-        
+
         if self.prefix.len() > 50 {
             return Err("Worktree prefix is too long (max 50 characters)".to_string());
         }
-        
+
         if self.merge_detection.methods.is_empty() {
             return Err("At least one merge detection method must be configured".to_string());
         }
-        
+
         if self.merge_detection.main_branches.is_empty() {
             return Err("At least one main branch must be configured".to_string());
         }
-        
+
         if self.cleanup.age_threshold_hours > 24 * 365 {
             return Err("Age threshold is too high (max 1 year)".to_string());
         }
-        
+
         if self.status.max_files_shown == 0 || self.status.max_files_shown > 100 {
             return Err("Max files shown must be between 1 and 100".to_string());
         }
-        
+
         if self.status.max_commits_shown == 0 || self.status.max_commits_shown > 50 {
             return Err("Max commits shown must be between 1 and 50".to_string());
         }
-        
+
         // Validate editor command
         if self.default_editor.is_empty() {
             return Err("Default editor cannot be empty".to_string());
         }
-        
+
         // Basic validation of base directory - just check it's not completely empty
         if self.base_dir.to_string_lossy().trim().is_empty() {
             return Err("Base directory cannot be empty or whitespace".to_string());
         }
-        
+
         Ok(())
     }
-    
+
     /// Get configuration documentation for help system
     pub fn get_help_text() -> &'static str {
         r#"Worktree Configuration Options:
@@ -343,81 +349,136 @@ Configuration File:
   in the 'repositories[].worktree_config' section.
 "#
     }
-    
+
     /// Create a sample configuration for documentation
     pub fn sample_config_yaml() -> String {
-        serde_yaml::to_string(&Self::default()).unwrap_or_else(|_| "# Error generating sample config".to_string())
+        serde_yaml::to_string(&Self::default())
+            .unwrap_or_else(|_| "# Error generating sample config".to_string())
     }
 }
 
 /// Environment variable documentation
 pub const WORKTREE_ENV_VARS: &[(&str, &str, &str)] = &[
-    ("VIBE_WORKTREE_MODE", "local", "Worktree storage mode (local or global)"),
-    ("VIBE_WORKTREE_BASE", ".worktrees", "Base directory for worktrees"),
-    ("VIBE_WORKTREE_PREFIX", "vibe-ws/", "Branch prefix for managed worktrees"),
+    (
+        "VIBE_WORKTREE_MODE",
+        "local",
+        "Worktree storage mode (local or global)",
+    ),
+    (
+        "VIBE_WORKTREE_BASE",
+        ".worktrees",
+        "Base directory for worktrees",
+    ),
+    (
+        "VIBE_WORKTREE_PREFIX",
+        "vibe-ws/",
+        "Branch prefix for managed worktrees",
+    ),
     ("VIBE_WORKTREE_EDITOR", "code", "Default editor command"),
-    ("VIBE_WORKTREE_AUTO_GITIGNORE", "true", "Auto-manage .gitignore entries"),
-    ("VIBE_WORKTREE_AGE_THRESHOLD", "24", "Minimum age in hours for cleanup eligibility"),
-    ("VIBE_WORKTREE_VERIFY_REMOTE", "true", "Verify remote branch exists before cleanup"),
-    ("VIBE_WORKTREE_AUTO_DELETE_BRANCH", "false", "Auto-delete branch after worktree removal"),
-    ("VIBE_WORKTREE_USE_GITHUB_CLI", "true", "Use GitHub CLI for merge detection"),
-    ("VIBE_WORKTREE_MERGE_METHODS", "standard,squash,github_pr", "Merge detection methods"),
-    ("VIBE_WORKTREE_MAIN_BRANCHES", "main,master", "Main branches for merge detection"),
-    ("VIBE_WORKTREE_SHOW_FILES", "true", "Show file lists in status output"),
-    ("VIBE_WORKTREE_MAX_FILES_SHOWN", "10", "Maximum files to show in status"),
+    (
+        "VIBE_WORKTREE_AUTO_GITIGNORE",
+        "true",
+        "Auto-manage .gitignore entries",
+    ),
+    (
+        "VIBE_WORKTREE_AGE_THRESHOLD",
+        "24",
+        "Minimum age in hours for cleanup eligibility",
+    ),
+    (
+        "VIBE_WORKTREE_VERIFY_REMOTE",
+        "true",
+        "Verify remote branch exists before cleanup",
+    ),
+    (
+        "VIBE_WORKTREE_AUTO_DELETE_BRANCH",
+        "false",
+        "Auto-delete branch after worktree removal",
+    ),
+    (
+        "VIBE_WORKTREE_USE_GITHUB_CLI",
+        "true",
+        "Use GitHub CLI for merge detection",
+    ),
+    (
+        "VIBE_WORKTREE_MERGE_METHODS",
+        "standard,squash,github_pr",
+        "Merge detection methods",
+    ),
+    (
+        "VIBE_WORKTREE_MAIN_BRANCHES",
+        "main,master",
+        "Main branches for merge detection",
+    ),
+    (
+        "VIBE_WORKTREE_SHOW_FILES",
+        "true",
+        "Show file lists in status output",
+    ),
+    (
+        "VIBE_WORKTREE_MAX_FILES_SHOWN",
+        "10",
+        "Maximum files to show in status",
+    ),
 ];
 
 #[cfg(test)]
 mod config_tests {
     use super::*;
     use std::env;
-    
+
     #[test]
     fn test_enhanced_validation() {
         let mut config = WorktreeConfig::default();
-        
+
         // Valid configuration should pass
         let result = config.validate();
         if let Err(err) = &result {
             eprintln!("Default config validation failed: {}", err);
         }
         assert!(result.is_ok());
-        
+
         // Test prefix validation
         config.prefix = "..".to_string();
         assert!(config.validate().is_err());
-        assert!(config.validate().unwrap_err().contains("invalid characters"));
-        
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("invalid characters"));
+
         config.prefix = "x".repeat(60); // Too long
         assert!(config.validate().is_err());
         assert!(config.validate().unwrap_err().contains("too long"));
-        
+
         // Reset to valid
         config.prefix = "test/".to_string();
         assert!(config.validate().is_ok());
-        
+
         // Test empty methods
         config.merge_detection.methods.clear();
         assert!(config.validate().is_err());
-        assert!(config.validate().unwrap_err().contains("merge detection method"));
-        
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("merge detection method"));
+
         // Test empty main branches
         config.merge_detection.methods = vec!["standard".to_string()];
         config.merge_detection.main_branches.clear();
         assert!(config.validate().is_err());
         assert!(config.validate().unwrap_err().contains("main branch"));
-        
+
         // Test file limits
         config.merge_detection.main_branches = vec!["main".to_string()];
         config.status.max_files_shown = 0;
         assert!(config.validate().is_err());
         assert!(config.validate().unwrap_err().contains("Max files shown"));
-        
+
         config.status.max_files_shown = 200;
         assert!(config.validate().is_err());
         assert!(config.validate().unwrap_err().contains("Max files shown"));
     }
-    
+
     #[test]
     fn test_load_with_overrides() {
         // Set environment variables with valid values
@@ -428,9 +489,9 @@ mod config_tests {
         env::set_var("VIBE_WORKTREE_MERGE_METHODS", "standard,custom");
         env::set_var("VIBE_WORKTREE_MAIN_BRANCHES", "main,dev");
         env::set_var("VIBE_WORKTREE_MAX_FILES_SHOWN", "20");
-        
+
         let config = WorktreeConfig::load_with_overrides().unwrap();
-        
+
         assert_eq!(config.prefix, "env-prefix/");
         assert_eq!(config.base_dir, PathBuf::from("/tmp/worktrees"));
         assert_eq!(config.cleanup.age_threshold_hours, 48);
@@ -438,7 +499,7 @@ mod config_tests {
         assert_eq!(config.merge_detection.methods, vec!["standard", "custom"]);
         assert_eq!(config.merge_detection.main_branches, vec!["main", "dev"]);
         assert_eq!(config.status.max_files_shown, 20);
-        
+
         // Clean up
         env::remove_var("VIBE_WORKTREE_PREFIX");
         env::remove_var("VIBE_WORKTREE_BASE");
@@ -448,7 +509,7 @@ mod config_tests {
         env::remove_var("VIBE_WORKTREE_MAIN_BRANCHES");
         env::remove_var("VIBE_WORKTREE_MAX_FILES_SHOWN");
     }
-    
+
     #[test]
     fn test_sample_config_generation() {
         let yaml = WorktreeConfig::sample_config_yaml();
@@ -456,7 +517,7 @@ mod config_tests {
         assert!(yaml.contains("prefix"));
         assert!(yaml.contains("base_dir"));
     }
-    
+
     #[test]
     fn test_help_text() {
         let help = WorktreeConfig::get_help_text();
@@ -465,7 +526,7 @@ mod config_tests {
         assert!(help.contains("VIBE_WORKTREE_PREFIX"));
         assert!(help.contains("Configuration File"));
     }
-    
+
     #[test]
     fn test_environment_variable_documentation() {
         // Test that all documented environment variables are valid
@@ -475,61 +536,61 @@ mod config_tests {
             assert!(!description.is_empty());
             assert!(env_var.starts_with("VIBE_WORKTREE_"));
         }
-        
+
         assert!(WORKTREE_ENV_VARS.len() > 10); // Should have many env vars documented
     }
-    
+
     #[test]
     fn test_worktree_mode() {
         // Test default mode
         let config = WorktreeConfig::default();
         assert_eq!(config.mode, WorktreeMode::Local);
-        
+
         // Test mode serialization/deserialization
         let local_config = WorktreeConfig {
             mode: WorktreeMode::Local,
             ..Default::default()
         };
-        
+
         let global_config = WorktreeConfig {
             mode: WorktreeMode::Global,
             ..Default::default()
         };
-        
+
         // Test serialization
         let local_yaml = serde_yaml::to_string(&local_config).unwrap();
         let global_yaml = serde_yaml::to_string(&global_config).unwrap();
-        
+
         assert!(local_yaml.contains("mode: local"));
         assert!(global_yaml.contains("mode: global"));
-        
+
         // Test deserialization
         let deserialized_local: WorktreeConfig = serde_yaml::from_str(&local_yaml).unwrap();
         let deserialized_global: WorktreeConfig = serde_yaml::from_str(&global_yaml).unwrap();
-        
+
         assert_eq!(deserialized_local.mode, WorktreeMode::Local);
         assert_eq!(deserialized_global.mode, WorktreeMode::Global);
     }
-    
+
     #[test]
     fn test_environment_variable_mode_override() {
         use std::env;
-        
+
         // Test local mode
         env::set_var("VIBE_WORKTREE_MODE", "local");
         let config = WorktreeConfig::from_env();
         assert_eq!(config.mode, WorktreeMode::Local);
-        
+
         // Test global mode
         env::set_var("VIBE_WORKTREE_MODE", "global");
         let config = WorktreeConfig::from_env();
         assert_eq!(config.mode, WorktreeMode::Global);
-        
+
         // Test invalid mode defaults to local
         env::set_var("VIBE_WORKTREE_MODE", "invalid");
         let config = WorktreeConfig::from_env();
         assert_eq!(config.mode, WorktreeMode::Local);
-        
+
         // Clean up
         env::remove_var("VIBE_WORKTREE_MODE");
     }

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use crate::worktree::config::{
-    WorktreeConfig, WorktreeMode, WorktreeCleanupConfig, WorktreeMergeDetectionConfig
+    WorktreeCleanupConfig, WorktreeConfig, WorktreeMergeDetectionConfig, WorktreeMode,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,19 +45,19 @@ pub struct Repository {
 pub struct RepositoryWorktreeConfig {
     /// Override worktree storage mode for this repository
     pub mode: Option<WorktreeMode>,
-    
+
     /// Override global base directory for this repository
     pub base_dir: Option<PathBuf>,
-    
+
     /// Override global prefix for this repository
     pub prefix: Option<String>,
-    
+
     /// Repository-specific cleanup settings
     pub cleanup: Option<WorktreeCleanupConfig>,
-    
+
     /// Repository-specific merge detection settings
     pub merge_detection: Option<WorktreeMergeDetectionConfig>,
-    
+
     /// Disable worktree management for this repository
     pub disabled: Option<bool>,
 }
@@ -67,17 +67,25 @@ impl RepositoryWorktreeConfig {
     pub fn merge_with_global(&self, global: &WorktreeConfig) -> WorktreeConfig {
         WorktreeConfig {
             mode: self.mode.unwrap_or(global.mode),
-            base_dir: self.base_dir.clone().unwrap_or_else(|| global.base_dir.clone()),
+            base_dir: self
+                .base_dir
+                .clone()
+                .unwrap_or_else(|| global.base_dir.clone()),
             prefix: self.prefix.clone().unwrap_or_else(|| global.prefix.clone()),
             auto_gitignore: global.auto_gitignore, // Always use global setting
             default_editor: global.default_editor.clone(), // Always use global setting
-            cleanup: self.cleanup.clone().unwrap_or_else(|| global.cleanup.clone()),
-            merge_detection: self.merge_detection.clone()
+            cleanup: self
+                .cleanup
+                .clone()
+                .unwrap_or_else(|| global.cleanup.clone()),
+            merge_detection: self
+                .merge_detection
+                .clone()
                 .unwrap_or_else(|| global.merge_detection.clone()),
             status: global.status.clone(), // Always use global status settings
         }
     }
-    
+
     /// Check if worktree management is enabled for this repository
     pub fn is_enabled(&self) -> bool {
         !self.disabled.unwrap_or(false)
@@ -538,7 +546,7 @@ impl WorkspaceConfig {
 
         Ok(())
     }
-    
+
     /// Get effective worktree configuration for a specific repository
     pub fn get_worktree_config_for_repo(&self, repo_name: &str) -> WorktreeConfig {
         if let Some(repo) = self.repositories.iter().find(|r| r.name == repo_name) {
@@ -548,11 +556,11 @@ impl WorkspaceConfig {
                 }
             }
         }
-        
+
         // Return global config if no repository-specific overrides
         self.worktree.clone()
     }
-    
+
     /// Check if worktree management is enabled for a repository
     pub fn is_worktree_enabled_for_repo(&self, repo_name: &str) -> bool {
         if let Some(repo) = self.repositories.iter().find(|r| r.name == repo_name) {
@@ -560,7 +568,7 @@ impl WorkspaceConfig {
                 return repo_config.is_enabled();
             }
         }
-        
+
         true // Enabled by default
     }
 }

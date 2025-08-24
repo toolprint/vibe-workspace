@@ -14,23 +14,23 @@ pub mod operations;
 pub mod status;
 
 // Re-export core types
-pub use cache::{WorktreeStatusCache, CacheStats};
+pub use cache::{CacheStats, WorktreeStatusCache};
 pub use cleanup::{CleanupOptions, CleanupReport, CleanupStrategy};
 pub use config::WorktreeConfig;
-pub use config_manager::{WorktreeConfigManager, ConfigValidationError, ConfigSummary};
+pub use config_manager::{ConfigSummary, ConfigValidationError, WorktreeConfigManager};
 pub use manager::WorktreeManager;
 pub use merge_detection::{
-    detect_worktree_merge_status, MergeDetectionMethod, MergeDetectionResult, 
-    MergeDetector, MethodResult
+    detect_worktree_merge_status, MergeDetectionMethod, MergeDetectionResult, MergeDetector,
+    MethodResult,
 };
 pub use operations::{
     sanitize_branch_name, validate_branch_name, CreateOptions, RemoveOptions, WorktreeOperation,
     WorktreeOperations,
 };
 pub use status::{
-    batch_update_worktree_status, check_worktree_activity, check_worktree_status, 
-    check_worktree_status_with_config, get_branch_info, get_worktree_diff, update_worktree_info, 
-    BranchInfo, CommitInfo, MergeInfo, StatusSeverity, WorktreeInfo, WorktreeStatus
+    batch_update_worktree_status, check_worktree_activity, check_worktree_status,
+    check_worktree_status_with_config, get_branch_info, get_worktree_diff, update_worktree_info,
+    BranchInfo, CommitInfo, MergeInfo, StatusSeverity, WorktreeInfo, WorktreeStatus,
 };
 
 use anyhow::Result;
@@ -182,10 +182,7 @@ mod tests {
         assert!(!cleanup_options.dry_run);
         assert_eq!(cleanup_options.min_age_hours, Some(24));
         assert!(!cleanup_options.force);
-        assert!(matches!(
-            cleanup_options.strategy,
-            CleanupStrategy::Discard
-        ));
+        assert!(matches!(cleanup_options.strategy, CleanupStrategy::Discard));
 
         // CleanupReport doesn't have Default, so we create one manually for testing
         let cleanup_report = CleanupReport {

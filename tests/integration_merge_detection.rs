@@ -154,9 +154,9 @@ async fn test_merge_detection_config_variations() -> Result<()> {
 
     for (i, config) in configs.iter().enumerate() {
         println!("Testing config variant {}", i + 1);
-        
+
         let result = detect_worktree_merge_status(&path, "main", config).await;
-        
+
         // Each configuration should either succeed or fail gracefully
         match result {
             Ok(merge_info) => {
@@ -190,12 +190,9 @@ fn test_merge_detection_method_string_conversion() {
     for (method, expected_str) in methods {
         // Test to string conversion
         assert_eq!(method.as_str(), expected_str);
-        
+
         // Test from string conversion
-        assert_eq!(
-            MergeDetectionMethod::from_str(expected_str),
-            Some(method)
-        );
+        assert_eq!(MergeDetectionMethod::from_str(expected_str), Some(method));
     }
 
     // Test invalid string

@@ -43,7 +43,7 @@ impl VibeToolHandler for WorktreeHelpTool {
         _workspace: Arc<Mutex<WorkspaceManager>>,
     ) -> Result<Value> {
         let topic = args["topic"].as_str().unwrap_or("overview");
-        
+
         let help_content = match topic {
             "overview" => self.get_overview_help(),
             "configuration" => self.get_configuration_help(),
@@ -52,7 +52,7 @@ impl VibeToolHandler for WorktreeHelpTool {
             "troubleshooting" => self.get_troubleshooting_help(),
             _ => return Err(anyhow::anyhow!("Unknown help topic")),
         };
-        
+
         Ok(json!({
             "topic": topic,
             "content": help_content,
@@ -87,7 +87,7 @@ impl WorktreeHelpTool {
             ]
         })
     }
-    
+
     fn get_configuration_help(&self) -> Value {
         json!({
             "title": "Worktree Configuration",
@@ -145,7 +145,7 @@ impl WorktreeHelpTool {
             }
         })
     }
-    
+
     fn get_commands_help(&self) -> Value {
         json!({
             "title": "Worktree Commands",
@@ -199,7 +199,7 @@ impl WorktreeHelpTool {
             }
         })
     }
-    
+
     fn get_workflows_help(&self) -> Value {
         json!({
             "title": "Worktree Workflows",
@@ -337,7 +337,7 @@ impl WorktreeHelpTool {
             ]
         })
     }
-    
+
     fn get_troubleshooting_help(&self) -> Value {
         json!({
             "title": "Worktree Troubleshooting",
@@ -508,28 +508,31 @@ impl WorktreeHelpTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_worktree_help_tool() {
         let tool = WorktreeHelpTool;
         assert_eq!(tool.tool_name(), "worktree_help");
-        
+
         let schema = tool.input_schema();
         assert!(schema["properties"]["topic"].is_object());
-        
+
         // Test available topics
         let topics = &schema["properties"]["topic"]["enum"];
         assert!(topics.as_array().unwrap().contains(&json!("overview")));
         assert!(topics.as_array().unwrap().contains(&json!("configuration")));
         assert!(topics.as_array().unwrap().contains(&json!("commands")));
         assert!(topics.as_array().unwrap().contains(&json!("workflows")));
-        assert!(topics.as_array().unwrap().contains(&json!("troubleshooting")));
+        assert!(topics
+            .as_array()
+            .unwrap()
+            .contains(&json!("troubleshooting")));
     }
-    
+
     #[test]
     fn test_help_content_structure() {
         let tool = WorktreeHelpTool;
-        
+
         // Test each help section has required structure
         let overview = tool.get_overview_help();
         assert!(overview["title"].is_string());
@@ -537,20 +540,20 @@ mod tests {
         assert!(overview["key_concepts"].is_object());
         assert!(overview["benefits"].is_array());
         assert!(overview["available_tools"].is_array());
-        
+
         let config = tool.get_configuration_help();
         assert!(config["title"].is_string());
         assert!(config["environment_variables"].is_array());
         assert!(config["sample_config"].is_object());
-        
+
         let commands = tool.get_commands_help();
         assert!(commands["mcp_tools"].is_object());
         assert!(commands["cli_commands"].is_object());
-        
+
         let workflows = tool.get_workflows_help();
         assert!(workflows["workflows"].is_object());
         assert!(workflows["best_practices"].is_array());
-        
+
         let troubleshooting = tool.get_troubleshooting_help();
         assert!(troubleshooting["common_issues"].is_object());
         assert!(troubleshooting["diagnostic_tools"].is_array());

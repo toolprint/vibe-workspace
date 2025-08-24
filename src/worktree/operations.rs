@@ -85,16 +85,20 @@ impl WorktreeOperations {
             .file_name()
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
-        
-        Self { 
-            repo_root, 
+
+        Self {
+            repo_root,
             config,
             repo_name,
         }
     }
-    
+
     /// Create new operations instance with explicit repository name
-    pub fn new_with_repo_name(repo_root: PathBuf, config: WorktreeConfig, repo_name: String) -> Self {
+    pub fn new_with_repo_name(
+        repo_root: PathBuf,
+        config: WorktreeConfig,
+        repo_name: String,
+    ) -> Self {
         Self {
             repo_root,
             config,
@@ -179,7 +183,7 @@ impl WorktreeOperations {
             branch: branch_name,
             head: result.head,
             task_id: Some(options.task_id), // Store the original task ID
-            status: Default::default(), // Will be filled by status tracking
+            status: Default::default(),     // Will be filled by status tracking
             age: std::time::Duration::from_secs(0),
             is_detached: false,
         })
@@ -256,9 +260,9 @@ impl WorktreeOperations {
     /// Find worktree by task ID
     pub async fn find_worktree_by_task_id(&self, task_id: &str) -> Result<Option<WorktreeInfo>> {
         let worktrees = self.list_worktrees().await?;
-        Ok(worktrees.into_iter().find(|w| {
-            w.task_id.as_ref().map_or(false, |id| id == task_id)
-        }))
+        Ok(worktrees
+            .into_iter()
+            .find(|w| w.task_id.as_ref().map_or(false, |id| id == task_id)))
     }
 
     /// Resolve target (task ID, branch name, or path) to worktree info
@@ -363,7 +367,9 @@ impl WorktreeOperations {
                     // If base_dir is relative in global mode, make it relative to home directory
                     // or a central workspace location
                     if let Some(home) = dirs::home_dir() {
-                        home.join(".toolprint").join("vibe-workspace").join("worktrees")
+                        home.join(".toolprint")
+                            .join("vibe-workspace")
+                            .join("worktrees")
                     } else {
                         // Fallback to absolute path in temp directory
                         std::env::temp_dir().join("vibe-worktrees")
@@ -371,18 +377,19 @@ impl WorktreeOperations {
                 };
 
                 // Get repository name for directory structure
-                let repo_name = self.repo_name.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Repository name required for global worktree mode"))?;
+                let repo_name = self.repo_name.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Repository name required for global worktree mode")
+                })?;
 
                 // Add timestamp suffix to ensure uniqueness
                 let timestamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
                     .as_secs();
-                
+
                 // Handle task IDs with slashes by replacing them with dashes
                 let safe_task_id = task_id.replace('/', "-");
                 let worktree_name = format!("{}__{:x}", safe_task_id, timestamp);
-                
+
                 // Create path: base_dir/repo_name/worktree_name
                 Ok(base_path.join(repo_name).join(worktree_name))
             }
@@ -403,7 +410,9 @@ impl WorktreeOperations {
                     self.config.base_dir.clone()
                 } else {
                     if let Some(home) = dirs::home_dir() {
-                        home.join(".toolprint").join("vibe-workspace").join("worktrees")
+                        home.join(".toolprint")
+                            .join("vibe-workspace")
+                            .join("worktrees")
                     } else {
                         std::env::temp_dir().join("vibe-worktrees")
                     }
@@ -431,7 +440,7 @@ impl WorktreeOperations {
         if self.config.mode == WorktreeMode::Global {
             return Ok(()); // Global worktrees don't need .gitignore
         }
-        
+
         let base_path = if self.config.base_dir.is_absolute() {
             return Ok(()); // External worktrees don't need .gitignore
         } else {
@@ -581,7 +590,12 @@ impl WorktreeOperations {
 
                 // Try to extract task_id from branch name by removing prefix
                 let task_id = if branch.starts_with(&self.config.prefix) {
-                    Some(branch.strip_prefix(&self.config.prefix).unwrap_or(&branch).to_string())
+                    Some(
+                        branch
+                            .strip_prefix(&self.config.prefix)
+                            .unwrap_or(&branch)
+                            .to_string(),
+                    )
                 } else {
                     None
                 };
