@@ -44,7 +44,23 @@ vibe [global-options] <command> [command-options]
     ├── sync [--fetch-only]       → Sync repositories
     ├── clone <url>               → Clone repository
     ├── search                    → Interactive repository search
-    └── reset [--force]           → Reset repository configuration
+    ├── reset [--force]           → Reset repository configuration
+    └── worktree                  → Manage git worktrees
+        ├── create <task-id>      → Create worktree for parallel development
+        ├── list                  → List all worktrees with status
+        ├── remove <target>       → Remove a worktree
+        ├── status [branch]       → Show worktree health overview
+        ├── clean                 → Clean up merged worktrees
+        ├── open <target>         → Open worktree in editor
+        ├── merge <target>        → Merge worktree changes
+        ├── backup <target>       → Backup worktree to remote
+        ├── conflicts <target>    → Show conflict analysis
+        └── config                → Manage worktree configuration
+            ├── show              → Show current configuration
+            ├── set <key> <val>   → Set configuration value
+            ├── reset             → Reset to defaults
+            ├── validate          → Validate configuration
+            └── info              → Show help and env variables
 ```
 
 ### Executable Commands
@@ -83,6 +99,21 @@ Commands that directly perform actions (leaf nodes and commands with default act
 | `vibe git clone` | Clone repository | Clone single repository |
 | `vibe git search` | Search repositories | Interactive GitHub repository search |
 | `vibe git reset` | Reset git config | Clear repository configuration |
+| `vibe git worktree create <task-id>` | Create worktree | Create new worktree for parallel task development |
+| `vibe git worktree list` | List worktrees | Show all worktrees with status and health indicators |
+| `vibe git worktree remove <target>` | Remove worktree | Remove worktree by task ID, branch, or path |
+| `vibe git worktree status` | Show health | Display repository worktree health overview |
+| `vibe git worktree status <branch>` | Branch status | Show detailed status for specific worktree |
+| `vibe git worktree clean` | Cleanup merged | Automatically clean up merged worktrees |
+| `vibe git worktree open <target>` | Open in editor | Open worktree in configured editor |
+| `vibe git worktree merge <target>` | Merge changes | Merge worktree changes to feature branch |
+| `vibe git worktree backup <target>` | Backup to remote | Push worktree changes to remote for safekeeping |
+| `vibe git worktree conflicts <target>` | Analyze conflicts | Show merge conflict analysis for worktree |
+| `vibe git worktree config show` | Show config | Display worktree configuration |
+| `vibe git worktree config set` | Set config | Update worktree configuration values |
+| `vibe git worktree config reset` | Reset config | Reset worktree config to defaults |
+| `vibe git worktree config validate` | Validate config | Check worktree configuration validity |
+| `vibe git worktree config info` | Config help | Show configuration help and environment variables |
 
 ## Menu
 
@@ -185,6 +216,31 @@ Setup Wizard → Repository Discovery → App Configuration → [Complete]
 - Recent repos show time since last access and last-used app
 - Use last-used app or prompt for selection
 - Update access history and launch
+
+#### Worktree Development Workflow
+**Entry Points**: 
+- `vibe git worktree create <task-id>` - Create worktree for a task
+- MCP Tool: `create_worktree` - AI-assisted worktree creation
+
+**Flow**:
+1. **Create Worktree** - Generate sanitized branch name from task ID
+2. **Configure Location** - Determine storage mode (local/.worktrees or global)
+3. **Setup GitIgnore** - Auto-add worktree directory to .gitignore
+4. **Open in Editor** - Launch configured editor (optional)
+5. **Track Status** - Monitor changes and merge status
+
+#### Worktree Cleanup Workflow
+**Entry Points**:
+- `vibe git worktree clean` - Manual cleanup command
+- MCP Tool: `recommend_cleanup` - AI recommendations
+- MCP Tool: `execute_cleanup` - AI-driven cleanup
+
+**Flow**:
+1. **Analyze Worktrees** - Check merge status and age
+2. **Detect Merged** - Use multiple detection methods (GitHub CLI, git log, etc.)
+3. **Recommend Actions** - Suggest cleanup strategy
+4. **Execute Cleanup** - Remove/backup/merge based on strategy
+5. **Report Results** - Show cleanup summary
 
 ### 🧠 Smart Actions (Context-Aware Menu Items)
 
@@ -313,3 +369,99 @@ All text input prompts support ESC cancellation:
 - "Choose directory path • ESC to go back"
 - "Enter backup name • ESC to cancel"
 - "Select app to open with • ESC to cancel"
+
+## Worktree Management
+
+### Command Options
+
+#### `vibe git worktree create`
+- `--base-branch, -b <branch>` - Base branch to create from (default: current branch)
+- `--force, -f` - Force creation even if branch exists
+- `--path, -p <path>` - Custom worktree path (overrides default)
+- `--mode, -m <local|global>` - Storage mode (local within repo, global centralized)
+- `--open, -o` - Open in editor after creation
+- `--editor <cmd>` - Editor command to use
+
+#### `vibe git worktree list`
+- `--prefix, -p <prefix>` - Filter by branch prefix
+- `--verbose, -v` - Show detailed information
+- `--format, -f <table|json|compact>` - Output format (default: table)
+- `--dirty-only, -d` - Show only worktrees with uncommitted changes
+
+#### `vibe git worktree remove`
+- `--force, -f` - Force removal even with uncommitted changes
+- `--delete-branch, -d` - Also delete the branch after removing
+- `--yes` - Skip confirmation prompts
+
+#### `vibe git worktree clean`
+- `--dry-run, -d` - Show what would be done without executing
+- `--force, -f` - Force cleanup even with uncommitted changes
+- `--age <hours>` - Minimum age in hours before cleanup
+- `--yes` - Skip confirmation prompts
+
+#### `vibe git worktree merge`
+- `--strategy, -s <squash|rebase|standard>` - Merge strategy (default: standard)
+- `--yes` - Skip confirmation prompts
+
+#### `vibe git worktree backup`
+- `--cleanup-after` - Remove worktree after successful backup
+- `--yes` - Skip confirmation prompts
+
+#### `vibe git worktree conflicts`
+- `--compact` - Show compact format (summary only)
+- `--format, -f <table|json|compact>` - Output format (default: table)
+
+### MCP Worktree Management Tools
+
+The following tools are available for AI systems via Model Context Protocol:
+
+| Tool | Purpose | Key Parameters |
+|------|---------|----------------|
+| `create_worktree` | Create new worktree for task | task_id, base_branch, force |
+| `list_worktrees` | List and analyze worktrees | include_status, verbose |
+| `analyze_conflicts` | Analyze merge conflicts | target, verbose |
+| `recommend_cleanup` | Get cleanup recommendations | min_age_hours, include_analysis |
+| `execute_cleanup` | Perform worktree cleanup | strategy, targets, dry_run |
+| `worktree_help` | Get contextual help | topic (optional) |
+
+### Configuration
+
+#### Environment Variables
+- `VIBE_WORKTREE_PREFIX` - Branch prefix for worktrees (default: "vibe-ws/")
+- `VIBE_WORKTREE_BASE` - Base directory for worktrees (default: ".worktrees")
+- `VIBE_WORKTREE_MODE` - Storage mode: local or global (default: local)
+- `VIBE_WORKTREE_AUTO_GITIGNORE` - Auto-add to .gitignore (default: true)
+- `VIBE_WORKTREE_DEFAULT_EDITOR` - Default editor command (default: "code")
+
+#### Configuration Keys
+- `prefix` - Branch naming prefix
+- `base_dir` - Worktree storage location
+- `mode` - Storage mode (local/global)
+- `auto_gitignore` - Automatic .gitignore management
+- `default_editor` - Editor for opening worktrees
+- `cleanup.age_threshold_hours` - Minimum age for cleanup
+- `cleanup.verify_remote` - Check remote before cleanup
+- `cleanup.auto_delete_branch` - Delete branch after cleanup
+- `merge_detection.use_github_cli` - Use gh CLI for detection
+- `merge_detection.methods` - Detection methods to use
+- `merge_detection.main_branches` - Main branch names to check
+
+### Status Indicators
+
+#### Status Icons
+- `✅` - Clean (no uncommitted changes)
+- `📝` - Has uncommitted changes
+- `↑` - Has unpushed commits
+- `❓` - Has untracked files
+- `🔀` - Merged to main/feature branch
+- `⚠️` - Needs attention (conflicts or issues)
+
+#### Health Scores
+- 100% - All worktrees clean and synced
+- 75-99% - Minor issues (unpushed commits)
+- 50-74% - Moderate issues (uncommitted changes)
+- 0-49% - Major issues (conflicts, missing remotes)
+
+### Integration Note
+
+> **Note**: Worktree management is currently available through CLI commands (`vibe git worktree`) and MCP tools for AI assistance. Interactive menu integration is planned for a future update.
