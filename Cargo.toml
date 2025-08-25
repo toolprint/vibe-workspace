@@ -1,6 +1,6 @@
 [package]
 name = "vibe-workspace"
-version = "0.0.11"
+version = "0.0.12"
 edition = "2021"
 authors = ["Brian Cripe <brian@onegrep.dev>"]
 description = "Extremely lightweight CLI for managing multiple git repositories and workspace configurations"
@@ -12,6 +12,10 @@ categories = ["command-line-utilities", "development-tools"]
 [[bin]]
 name = "vibe"
 path = "src/main.rs"
+
+[lib]
+name = "vibe_workspace"
+path = "src/lib.rs"
 
 [dependencies]
 # CLI framework and argument parsing
@@ -79,6 +83,9 @@ schemars = "0.8"
 
 # Thread-safe initialization
 once_cell = "1.19"
+
+# Async utilities for batch processing
+futures-util = "0.3"
 
 # cargo-binstall support for binary distribution
 [package.metadata.binstall]

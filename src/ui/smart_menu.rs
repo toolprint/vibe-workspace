@@ -55,6 +55,7 @@ struct WorkspaceState {
     unconfigured_repos: Vec<String>,
     missing_repos: Vec<String>,
     available_apps: Vec<String>,
+    #[allow(dead_code)]
     has_uncommitted_changes: bool,
     days_since_last_sync: Option<i64>,
 }

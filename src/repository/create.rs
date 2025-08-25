@@ -161,6 +161,7 @@ impl RepositoryCreator {
             url: Some(format!("https://github.com/{owner}/{repo_name}")),
             branch: Some("main".to_string()),
             apps: std::collections::HashMap::new(),
+            worktree_config: None,
         };
 
         workspace_manager.add_repository(repository_config).await?;

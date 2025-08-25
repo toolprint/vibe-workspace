@@ -65,6 +65,13 @@ impl VibeMCPServer {
             .with_tool(Arc::new(handlers::ResetGitConfigTool))
             // Validation tool
             .with_tool(Arc::new(handlers::ValidateMcpInterfaceTool))
+            // Worktree management tools
+            .with_tool(Arc::new(handlers::CreateWorktreeTool))
+            .with_tool(Arc::new(handlers::ListWorktreesTool))
+            .with_tool(Arc::new(handlers::AnalyzeConflictsTool))
+            .with_tool(Arc::new(handlers::RecommendCleanupTool))
+            .with_tool(Arc::new(handlers::ExecuteCleanupTool))
+            .with_tool(Arc::new(handlers::WorktreeHelpTool))
             .build()
     }
 

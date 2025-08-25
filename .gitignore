@@ -139,3 +139,10 @@ release-artifacts/
 # Build output directory
 build/
 .intentionally-empty-file.o
+
+# Codanna
+.codanna/
+.fastembed_cache/
+
+# Vibe worktree directories
+.worktrees/

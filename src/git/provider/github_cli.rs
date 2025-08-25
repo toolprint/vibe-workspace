@@ -324,8 +324,10 @@ impl GitHubCliProvider {
             stars: u32,
             language: Option<String>,
             #[serde(default)]
+            #[allow(dead_code)]
             fork: bool,
             #[serde(default)]
+            #[allow(dead_code)]
             archived: bool,
             #[serde(default)]
             topics: Vec<String>,
@@ -380,6 +382,7 @@ impl GitHubCliProvider {
             language: Option<String>,
             license: Option<LicenseInfo>,
             #[serde(default)]
+            #[allow(dead_code)]
             visibility: Option<String>,
         }
 

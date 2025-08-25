@@ -5,6 +5,8 @@ pub mod config;
 pub mod git;
 pub mod repos;
 pub mod validation;
+pub mod worktree;
+pub mod worktree_help;
 
 // Re-export all handlers for easy access
 
@@ -31,3 +33,12 @@ pub use git::{
 
 // Validation handler
 pub use validation::ValidateMcpInterfaceTool;
+
+// Worktree handlers
+pub use worktree::{
+    AnalyzeConflictsTool, CreateWorktreeTool, ExecuteCleanupTool, ListWorktreesTool,
+    RecommendCleanupTool,
+};
+
+// Worktree help handler
+pub use worktree_help::WorktreeHelpTool;

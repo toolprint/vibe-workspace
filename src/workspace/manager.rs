@@ -445,6 +445,10 @@ impl WorkspaceManager {
         &self.config.workspace.root
     }
 
+    pub fn get_config_path(&self) -> &PathBuf {
+        &self.config_path
+    }
+
     pub fn config(&self) -> &WorkspaceConfig {
         &self.config
     }

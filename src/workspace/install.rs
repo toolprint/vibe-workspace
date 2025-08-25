@@ -216,6 +216,7 @@ impl RepositoryInstaller {
             url: Some(url.to_string()),
             branch: None, // Will be detected from the actual repository
             apps: HashMap::new(),
+            worktree_config: None,
         })
     }
 
